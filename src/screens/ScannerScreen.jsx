@@ -5,37 +5,60 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
+  FlatList,
   AppState,
+  Dimensions,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const C = {
-  bg:        "#0f0f0f",   // bianco-50  — page background
-  surface:   "#242424",   // bianco-100 — cards, inputs
-  elevated:  "#3a3a3a",   // bianco-200 — elevated surfaces
-  border:    "#4a4a4a",   // bianco-300 — borders
-  muted:     "#6f6f6f",   // bianco-400 — muted text / placeholders
-  subtle:    "#8b8b8b",   // bianco-500 — secondary text
-  body:      "#cbcbcb",   // bianco-700 — body text
-  strong:    "#e2e2e2",   // bianco-800 — strong text
-  heading:   "#eeeeee",   // bianco-900 — headings / primary text
-  accent:    "#6366f1",   // indigo — interactive accent
-  accentDim: "rgba(99,102,241,0.15)",
-  accentBorder: "rgba(99,102,241,0.35)",
-  success:   "#4ade80",
-  error:     "#f87171",
-  overlay:   "rgba(10,10,10,0.74)",
+  bg:           "#f0f4ff",       // cool blue-tinted white page
+  surface:      "#ffffff",       // pure white cards
+  elevated:     "#e8edf8",       // slightly deeper for nested surfaces
+  border:       "#d1d9f0",       // soft blue-grey border
+  muted:        "#8e9bbf",       // muted blue-grey text
+  subtle:       "#6b7a9e",       // mid-tone label text
+  body:         "#3d4a6b",       // readable body
+  strong:       "#1e2a4a",       // strong text
+  heading:      "#0f1829",       // near-black headings
+  accent:       "#2563eb",       // vivid blue
+  accentLight:  "#3b82f6",       // lighter blue for hover/icons
+  accentDim:    "rgba(37,99,235,0.08)",
+  accentBorder: "rgba(37,99,235,0.22)",
+  accentText:   "#1d4ed8",       // slightly darker for text on white
+  success:      "#16a34a",
+  successDim:   "rgba(22,163,74,0.08)",
+  error:        "#dc2626",
+  errorDim:     "rgba(220,38,38,0.08)",
+  errorBorder:  "rgba(220,38,38,0.25)",
+  overlay:      "rgba(10,18,40,0.62)",
+  torchOn:      "#f59e0b",
 };
 
-const { width: SCREEN_W } = require("react-native").Dimensions.get("window");
-const SCAN_BOX = SCREEN_W * 0.7;
+const { width: SCREEN_W } = Dimensions.get("window");
+const SCAN_BOX   = SCREEN_W * 0.7;
+const STRIP_SIZE = 80;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function detectType(raw) {
+  if (/^https?:\/\//i.test(raw))              return "URL";
+  if (/^mailto:/i.test(raw))                  return "Email";
+  if (/^tel:/i.test(raw))                     return "Phone";
+  if (/^(BEGIN:VCARD|BEGIN:VCAL)/i.test(raw)) return "Contact";
+  if (/^WIFI:/i.test(raw))                    return "Wi-Fi";
+  return "Text";
+}
+
+function shortPreview(raw, max = 28) {
+  const s = raw.trim();
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
 
 // ─── Mode Toggle ──────────────────────────────────────────────────────────────
 function ModeToggle({ mode, onChangeMode }) {
@@ -46,14 +69,8 @@ function ModeToggle({ mode, onChangeMode }) {
         onPress={() => onChangeMode("camera")}
         activeOpacity={0.8}
       >
-        <Ionicons
-          name="camera-outline"
-          size={15}
-          color={mode === "camera" ? C.heading : C.muted}
-        />
-        <Text style={[tog.label, mode === "camera" && tog.labelActive]}>
-          Camera
-        </Text>
+        <Ionicons name="camera-outline" size={20} color={mode === "camera" ? "#fff" : C.subtle} />
+        <Text style={[tog.label, mode === "camera" && tog.labelActive]}>Camera</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -61,32 +78,144 @@ function ModeToggle({ mode, onChangeMode }) {
         onPress={() => onChangeMode("hardware")}
         activeOpacity={0.8}
       >
-        <MaterialCommunityIcons
-          name="barcode-scan"
-          size={15}
-          color={mode === "hardware" ? C.heading : C.muted}
-        />
-        <Text style={[tog.label, mode === "hardware" && tog.labelActive]}>
-          Hardware
-        </Text>
+        <MaterialCommunityIcons name="barcode-scan" size={20} color={mode === "hardware" ? "#fff" : C.subtle} />
+        <Text style={[tog.label, mode === "hardware" && tog.labelActive]}>Hardware</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-// ─── Camera Scanner ───────────────────────────────────────────────────────────
-function CameraScanner({ onScanComplete, onSwitchMode }) {
-  const [permission, requestPermission] = useCameraPermissions();
-  const [scanned, setScanned] = useState(false);
-  const [torch, setTorch] = useState(false);
+// ─── Scanned strip item ───────────────────────────────────────────────────────
+function StripItem({ item, index, onRemove, isNew }) {
+  const type = detectType(item.raw);
+  const opacity = useRef(new Animated.Value(isNew ? 0.4 : 1)).current;
 
   useEffect(() => {
-    if (scanned) {
-      const t = setTimeout(() => setScanned(false), 2000);
-      return () => clearTimeout(t);
-    }
-  }, [scanned]);
+    if (!isNew) return;
+    Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+  }, []);
 
+  return (
+    <Animated.View style={[strip.item, { opacity }]}>
+      <TouchableOpacity style={strip.removeBtn} onPress={() => onRemove(index)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+        <View style={strip.removeBtnInner}>
+          <Ionicons name="close" size={11} color="#fff" />
+        </View>
+      </TouchableOpacity>
+
+      <View style={strip.indexBadge}>
+        <Text style={strip.indexText}>{index + 1}</Text>
+      </View>
+
+      <MaterialCommunityIcons
+        name={type === "URL" ? "web" : type === "Email" ? "email-outline" : type === "Phone" ? "phone-outline" : type === "Wi-Fi" ? "wifi" : "text"}
+        size={20}
+        color={C.accent}
+        style={{ marginBottom: 4 }}
+      />
+
+      <Text style={strip.preview} numberOfLines={2}>
+        {shortPreview(item.raw, 18)}
+      </Text>
+    </Animated.View>
+  );
+}
+
+// ─── Scanned strip ────────────────────────────────────────────────────────────
+function ScannedStrip({ items, onRemove, onGenerate }) {
+  const listRef = useRef(null);
+  const prevLenRef = useRef(items.length); // track length at mount to skip initial scroll
+  const shouldScrollRef = useRef(false);   // flag: scroll on next content-size change
+  const newestKeyRef = useRef(null);       // scannedAt of the freshly-added item
+
+  useEffect(() => {
+    if (items.length > prevLenRef.current) {
+      shouldScrollRef.current = true;
+      newestKeyRef.current = items[items.length - 1]?.scannedAt ?? null;
+    }
+    prevLenRef.current = items.length;
+  }, [items.length]);
+
+  const handleContentSizeChange = useCallback((contentWidth, _contentHeight) => {
+    if (shouldScrollRef.current) {
+      shouldScrollRef.current = false;
+      // scrollToOffset to the true end (includes trailing paddingRight from contentContainerStyle)
+      listRef.current?.scrollToOffset({ offset: contentWidth, animated: true });
+    }
+  }, []);
+
+  if (items.length === 0) return null;
+
+  return (
+    <View style={strip.wrap}>
+      <View style={strip.header}>
+        <View style={strip.countRow}>
+          <Text style={strip.countText}>{items.length} QR scanned</Text>
+        </View>
+        {onGenerate && (
+          <TouchableOpacity style={strip.generateBtn} onPress={onGenerate} activeOpacity={0.85}>
+            <Ionicons name="document-text-outline" size={16} color="#fff" />
+            <Text style={strip.generateBtnText}>Generate PDF</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <View style={{ overflow: "visible" }}>
+        <FlatList
+          ref={listRef}
+          data={items}
+          keyExtractor={(_, i) => String(i)}
+          renderItem={({ item, index }) => (
+            <StripItem item={item} index={index} onRemove={onRemove} isNew={item.scannedAt === newestKeyRef.current} />
+          )}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={strip.list}
+          onContentSizeChange={handleContentSizeChange}
+        />
+      </View>
+    </View>
+  );
+}
+
+// ─── Camera Scanner ───────────────────────────────────────────────────────────
+function CameraScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
+  const [permission, requestPermission] = useCameraPermissions();
+  const [paused, setPaused]         = useState(false);   // true after each scan — waits for "Add QR" tap
+  const [torch, setTorch]           = useState(false);
+  const [scannedItems, setScannedItems] = useState(initialItems);
+  const [lastData, setLastData]     = useState(null);    // holds the most-recently scanned QR
+
+  // ── handle a barcode from the camera ──────────────────────────────────────
+  const handleBarcode = useCallback(({ type, data }) => {
+    if (paused) return;
+    // auto-add to list and pause camera until user taps "Add QR" / Generate
+    const newItem = { raw: data, type, scannedAt: new Date().toISOString() };
+    setLastData(newItem);
+    setScannedItems((prev) => [...prev, newItem]);
+    setPaused(true);
+  }, [paused]);
+
+  // ── "Add QR" → resume camera for next scan ────────────────────────────────
+  const handleAddAnother = useCallback(() => {
+    setLastData(null);
+    setPaused(false);
+  }, []);
+
+  // ── remove an item from the strip ─────────────────────────────────────────
+  const handleRemoveItem = useCallback((index) => {
+    setScannedItems((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // ── generate PDF with all collected items ─────────────────────────────────
+  const handleGenerate = useCallback(() => {
+    if (scannedItems.length === 0) return;
+    onScanComplete({ items: scannedItems, source: "camera" });
+  }, [scannedItems, onScanComplete]);
+
+  const canGenerate = scannedItems.length > 0;
+
+  // ── permission screens ────────────────────────────────────────────────────
   if (!permission) {
     return (
       <View style={s.centered}>
@@ -98,10 +227,12 @@ function CameraScanner({ onScanComplete, onSwitchMode }) {
   if (!permission.granted) {
     return (
       <SafeAreaView style={s.permWrap} edges={["top", "bottom"]}>
-        <Ionicons name="camera-outline" size={64} color={C.accent} style={{ marginBottom: 24 }} />
+        <View style={s.permIconWrap}>
+          <Ionicons name="camera-outline" size={40} color={C.accent} />
+        </View>
         <Text style={s.permTitle}>Camera Access Needed</Text>
         <Text style={s.permSub}>
-          Camera permission is required to scan QR codes and generate PDFs from them.
+          Camera permission is required to scan QR codes and generate PDFs.
         </Text>
         <TouchableOpacity style={s.grantBtn} onPress={requestPermission} activeOpacity={0.85}>
           <Text style={s.grantBtnText}>Grant Permission</Text>
@@ -114,12 +245,6 @@ function CameraScanner({ onScanComplete, onSwitchMode }) {
     );
   }
 
-  const handleBarcode = ({ type, data }) => {
-    if (scanned) return;
-    setScanned(true);
-    onScanComplete({ raw: data, type, scannedAt: new Date().toISOString(), source: "camera" });
-  };
-
   return (
     <View style={s.camWrap}>
       <CameraView
@@ -127,12 +252,11 @@ function CameraScanner({ onScanComplete, onSwitchMode }) {
         facing="back"
         enableTorch={torch}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={handleBarcode}
+        onBarcodeScanned={paused ? undefined : handleBarcode}
       />
 
-      {/* Dim overlay */}
       <View style={s.overlay}>
-        {/* Header row */}
+        {/* Header */}
         <View style={s.camTop}>
           <SafeAreaView edges={["top"]} style={s.camHeader}>
             <Text style={s.camTitle}>QR → PDF</Text>
@@ -140,7 +264,25 @@ function CameraScanner({ onScanComplete, onSwitchMode }) {
           </SafeAreaView>
         </View>
 
-        {/* Scan box row */}
+        {/* Torch button — absolutely positioned on the viewport top-right */}
+        <SafeAreaView edges={["top"]} style={s.torchWrap} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[s.torchBtn, torch && s.torchBtnOn]}
+            onPress={() => setTorch((p) => !p)}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={torch ? "flashlight" : "flashlight-outline"}
+              size={17}
+              color={torch ? C.torchOn : C.heading}
+            />
+            {/* <Text style={[s.torchLabel, torch && { color: C.torchOn }]}>
+              {torch ? "Torch On" : "Torch Off"}
+            </Text> */}
+          </TouchableOpacity>
+        </SafeAreaView>
+
+        {/* Viewfinder */}
         <View style={s.camMid}>
           <View style={s.dimSide} />
           <View style={s.scanBox}>
@@ -152,93 +294,91 @@ function CameraScanner({ onScanComplete, onSwitchMode }) {
           <View style={s.dimSide} />
         </View>
 
-        {/* Bottom row */}
+        {/* Bottom controls */}
         <View style={s.camBottom}>
-          <Text style={s.hint}>
-            {scanned ? (
-              <Text>
-                <Ionicons name="checkmark-circle" size={15} color={C.success} /> Detected!
-              </Text>
-            ) : (
-              "Point your camera at a QR code"
-            )}
-          </Text>
-          <TouchableOpacity
-            style={[s.torchBtn, torch && s.torchBtnOn]}
-            onPress={() => setTorch((p) => !p)}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name={torch ? "flashlight" : "flashlight-outline"}
-              size={17}
-              color={torch ? "#fde047" : C.body}
-            />
-            <Text style={[s.torchLabel, torch && { color: "#fde047" }]}>
-              {torch ? "Torch On" : "Torch Off"}
-            </Text>
-          </TouchableOpacity>
+
+          {/* "Add QR" button — appears after each scan so user can scan another */}
+          {paused && (
+            <TouchableOpacity
+              style={s.addQrBtn}
+              onPress={handleAddAnother}
+              activeOpacity={0.85}
+            >
+              <Feather name="plus" size={17} color="#fff" />
+              <Text style={s.addQrBtnText}>Add QR</Text>
+            </TouchableOpacity>
+          )}
         </View>
+      </View>
+
+      {/* Scanned strip floats above the camera overlay at the very bottom */}
+      <View style={s.camStripWrap}>
+        <ScannedStrip items={scannedItems} onRemove={handleRemoveItem} onGenerate={canGenerate ? handleGenerate : null} />
       </View>
     </View>
   );
 }
 
 // ─── Hardware Scanner ─────────────────────────────────────────────────────────
-function HardwareScanner({ onScanComplete, onSwitchMode }) {
-  const [scannedData, setScannedData] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
-  const inputRef = useRef(null);
+function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
+  const [currentInput, setCurrentInput] = useState("");
+  const [scannedItems, setScannedItems] = useState(initialItems);
+  const inputRef    = useRef(null);
   const appStateRef = useRef(AppState.currentState);
+  const prevLenRef  = useRef(0);
 
-  // Re-focus whenever the screen comes back into view or app resumes
   const refocus = useCallback(() => {
-    // Small delay lets the UI settle before focusing
-    setTimeout(() => inputRef.current?.focus(), 100);
+    setTimeout(() => inputRef.current?.focus(), 80);
   }, []);
 
   useEffect(() => {
-    // Initial focus
     refocus();
-
-    // Re-focus when app comes back from background
     const sub = AppState.addEventListener("change", (next) => {
-      if (appStateRef.current.match(/inactive|background/) && next === "active") {
-        refocus();
-      }
+      if (appStateRef.current.match(/inactive|background/) && next === "active") refocus();
       appStateRef.current = next;
     });
-
     return () => sub.remove();
   }, [refocus]);
 
-  const handleSubmit = () => {
-    const trimmed = scannedData.trim();
-    if (!trimmed) {
-      Alert.alert("Nothing scanned", "Press the scanner button while the field is focused.");
-      return;
+  const handleTextChange = useCallback((text) => {
+    setCurrentInput(text);
+    if (text.endsWith("\n")) {
+      const trimmed = text.trim();
+      if (trimmed.length > 0) {
+        const newItem = { raw: trimmed, scannedAt: new Date().toISOString() };
+        setScannedItems((prev) => [...prev, newItem]);
+        setCurrentInput("");
+        prevLenRef.current = 0;
+        refocus();
+      }
     }
-    setIsProcessing(true);
-    setTimeout(() => {
-      onScanComplete({
-        raw: trimmed,
-        type: "barcode",
-        scannedAt: new Date().toISOString(),
-        source: "hardware",
-      });
-      setIsProcessing(false);
-    }, 300);
+  }, [refocus]);
+
+  const handleRemoveItem = useCallback((index) => {
+    setScannedItems((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleGenerate = () => {
+    const items = [...scannedItems];
+    const pending = currentInput.trim();
+    if (pending) items.push({ raw: pending, scannedAt: new Date().toISOString() });
+    if (items.length === 0) return;
+    onScanComplete({ items, source: "hardware" });
   };
 
-  const handleClear = () => {
-    setScannedData("");
+  const handleManualCommit = () => {
+    const trimmed = currentInput.trim();
+    if (!trimmed) return;
+    setScannedItems((prev) => [...prev, { raw: trimmed, scannedAt: new Date().toISOString() }]);
+    setCurrentInput("");
     refocus();
   };
 
+  const canGenerate = scannedItems.length > 0 || currentInput.trim().length > 0;
+  const hasText     = currentInput.trim().length > 0;
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={s.hwWrap}
-    >
+    <View style={s.hwWrap}>
       <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
         <ScrollView
           contentContainerStyle={s.hwScroll}
@@ -251,289 +391,588 @@ function HardwareScanner({ onScanComplete, onSwitchMode }) {
             <ModeToggle mode="hardware" onChangeMode={onSwitchMode} />
           </View>
 
-          {/* Device card */}
+          {/* Device info card */}
           <View style={s.deviceCard}>
-            <MaterialCommunityIcons name="barcode-scan" size={28} color={C.accent} />
+            <View style={s.deviceIconWrap}>
+              <MaterialCommunityIcons name="barcode-scan" size={26} color={C.accent} />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={s.deviceTitle}>Scanning Mode</Text>
               <Text style={s.deviceSub}>
-                Press the scanner button on your device. Data will appear in the field below automatically.
+                Scan multiple QR codes one by one.
               </Text>
             </View>
           </View>
 
-          {/* Input group */}
+          {/* ── Big scan target box ── */}
           <View style={s.inputGroup}>
             <Text style={s.inputLabel}>SCAN TARGET</Text>
-            {/*
-              showSoftInputOnFocus={false} → field stays focused (accepts hardware
-              scanner input) but the software keyboard never auto-opens.
-              Tapping it while it's already focused will open the keyboard so the
-              user can type manually if needed.
-            */}
-            <TextInput
-              ref={inputRef}
-              style={[s.input, scannedData.length > 0 && s.inputFilled]}
-              placeholder="Waiting for scan…"
-              placeholderTextColor={C.muted}
-              value={scannedData}
-              onChangeText={setScannedData}
-              multiline
-              numberOfLines={4}
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-              editable={!isProcessing}
-              onSubmitEditing={handleSubmit}
-              // Keep hardware scanners working without popping the soft keyboard
-              showSoftInputOnFocus={false}
-              // Re-focus if somehow blurred
-              onBlur={refocus}
-            />
-          </View>
 
-          {/* Preview */}
-          {scannedData.length > 0 && (
-            <View style={s.previewCard}>
-              <View style={s.previewRow}>
-                <Ionicons name="checkmark-circle" size={14} color={C.success} />
-                <Text style={s.previewLabel}>DATA CAPTURED — {scannedData.length} chars</Text>
-              </View>
-              <Text style={s.previewValue} numberOfLines={3} selectable>
-                {scannedData}
-              </Text>
-            </View>
-          )}
+            {/* Static outer ring */}
+            <View style={s.scanRingOuter}>
+              {/* Inner card */}
+              <View style={[s.scanTargetBox, hasText && s.scanTargetBoxFilled]}>
 
-          {/* Actions */}
-          <View style={s.actions}>
-            {!isProcessing ? (
-              <>
-                <TouchableOpacity
-                  style={[s.primaryBtn, !scannedData.trim() && s.primaryBtnOff]}
-                  onPress={handleSubmit}
-                  disabled={!scannedData.trim()}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="document-text-outline" size={18} color="#fff" />
-                  <Text style={s.primaryBtnText}>Generate PDF</Text>
-                </TouchableOpacity>
+                {/* Hidden TextInput — captures hardware scanner input, invisible to user */}
+                <TextInput
+                  ref={inputRef}
+                  style={s.hiddenInput}
+                  value={currentInput}
+                  onChangeText={handleTextChange}
+                  multiline={false}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  showSoftInputOnFocus={false}
+                  caretHidden={true}
+                  onBlur={refocus}
+                  returnKeyType="done"
+                  onSubmitEditing={handleManualCommit}
+                />
 
-                {scannedData.length > 0 && (
-                  <TouchableOpacity style={s.secondaryBtn} onPress={handleClear} activeOpacity={0.8}>
-                    <Ionicons name="refresh-outline" size={16} color={C.subtle} />
-                    <Text style={s.secondaryBtnText}>Clear & Re-scan</Text>
-                  </TouchableOpacity>
+                {/* Visual display */}
+                {hasText ? (
+                  <Text style={s.scanTargetValue} numberOfLines={3}>{currentInput}</Text>
+                ) : (
+                  <View style={s.scanTargetIdle}>
+                    <MaterialCommunityIcons name="line-scan" size={40} color={C.accentBorder} style={{ marginBottom: 12 }} />
+                    <Text style={s.scanTargetPlaceholder}>Waiting for scan</Text>
+                    <Text style={s.scanTargetSub}>Point your scanner at a QR code</Text>
+                  </View>
                 )}
-              </>
-            ) : (
-              <View style={s.processingBox}>
-                <Text style={s.processingText}>Processing scan…</Text>
               </View>
+            </View>
+
+            {/* Add button — only shown when there's text */}
+            {hasText && (
+              <TouchableOpacity style={s.addBtnFull} onPress={handleManualCommit} activeOpacity={0.85}>
+                <Feather name="plus" size={18} color="#fff" />
+                <Text style={s.addBtnFullText}>Add to list</Text>
+              </TouchableOpacity>
             )}
+
+            {/* <Text style={s.inputHint}>
+              Scans auto-add on each scan. Tap "Add to list" or press Enter to add manually.
+            </Text> */}
           </View>
 
-          {/* Tips */}
-          <View style={s.tipsCard}>
-            <View style={s.tipsRow}>
-              <Ionicons name="information-circle-outline" size={16} color={C.accent} />
-              <Text style={s.tipsTitle}>Tips for Scanning</Text>
-            </View>
-            {[
-              "Scan to enter data",
-              "Tap to type",
-              "Tap and rescan if needed",
-              "Paste or type manually",
-            ].map((tip, i) => (
-              <View key={i} style={s.tipRow}>
-                <Ionicons name="ellipse" size={5} color={C.muted} style={{ marginTop: 6 }} />
-                <Text style={s.tipText}>{tip}</Text>
-              </View>
-            ))}
-          </View>
+          {/* Generate button */}
+          <TouchableOpacity
+            style={[s.primaryBtn, !canGenerate && s.primaryBtnOff]}
+            onPress={handleGenerate}
+            disabled={!canGenerate}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="document-text-outline" size={18} color="#fff" />
+            <Text style={s.primaryBtnText}>
+              Generate PDF{scannedItems.length > 0 ? ` (${scannedItems.length} QR)` : ""}
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
+
+        {/* Sticky bottom strip */}
+        <ScannedStrip items={scannedItems} onRemove={handleRemoveItem} onGenerate={canGenerate ? handleGenerate : null} />
       </SafeAreaView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export default function ScannerScreen({ onScanComplete }) {
-  const [mode, setMode] = useState("camera");
+export default function ScannerScreen({ onScanComplete, initialItems = [], initialMode = "camera" }) {
+  const [mode, setMode] = useState(initialMode);
   return mode === "camera" ? (
-    <CameraScanner onScanComplete={onScanComplete} onSwitchMode={setMode} />
+    <CameraScanner onScanComplete={onScanComplete} onSwitchMode={setMode} initialItems={initialItems} />
   ) : (
-    <HardwareScanner onScanComplete={onScanComplete} onSwitchMode={setMode} />
+    <HardwareScanner onScanComplete={onScanComplete} onSwitchMode={setMode} initialItems={initialItems} />
   );
 }
+
+// ─── Strip Styles ─────────────────────────────────────────────────────────────
+const strip = StyleSheet.create({
+  wrap: {
+    backgroundColor: C.surface,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    paddingBottom: 8,
+    shadowColor: "#2563eb",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  countRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  countText: {
+    color: C.accent,
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  generateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: C.accent,
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+    borderRadius: 20,
+  },
+  generateBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  list: {
+    paddingHorizontal: 12,
+    paddingTop: 16,
+    paddingBottom: 8,
+    gap: 8,
+  },
+  item: {
+    width: STRIP_SIZE,
+    height: STRIP_SIZE,
+    backgroundColor: C.elevated,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 6,
+    position: "relative",
+    overflow: "visible",
+  },
+  removeBtn: {
+    position: "absolute",
+    top: -9,
+    right: -9,
+    zIndex: 10,
+  },
+  removeBtnInner: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: C.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  indexBadge: {
+    position: "absolute",
+    top: 4,
+    left: 6,
+    backgroundColor: C.accentDim,
+    borderRadius: 8,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  indexText: {
+    color: C.accentText,
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  preview: {
+    color: C.subtle,
+    fontSize: 9,
+    textAlign: "center",
+    lineHeight: 12,
+    marginTop: 2,
+  },
+});
 
 // ─── Toggle Styles ────────────────────────────────────────────────────────────
 const tog = StyleSheet.create({
   wrap: {
     flexDirection: "row",
-    backgroundColor: "rgba(0,0,0,0.45)",
-    borderRadius: 20,
-    padding: 3,
-    marginTop: 10,
+    backgroundColor: C.elevated,
+    borderRadius: 28,
+    padding: 4,
+    marginTop: 12,
     borderWidth: 1,
     borderColor: C.border,
+    alignSelf: "center",
   },
   tab: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 17,
+    gap: 8,
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+    borderRadius: 24,
   },
-  active: { backgroundColor: C.accent },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: C.muted,
+  active: {
+    backgroundColor: C.accent,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  labelActive: { color: C.heading },
+  label: { fontSize: 16, fontWeight: "600", color: C.muted },
+  labelActive: { color: "#fff" },
 });
 
 // ─── Main Styles ──────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  centered: {
-    flex: 1, alignItems: "center", justifyContent: "center",
-    backgroundColor: C.bg,
-  },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: C.bg },
   infoText: { color: C.subtle, fontSize: 15 },
 
   // Permission screen
   permWrap: {
-    flex: 1, backgroundColor: C.bg,
-    alignItems: "center", justifyContent: "center",
+    flex: 1,
+    backgroundColor: C.bg,
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 36,
   },
+  permIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 28,
+    backgroundColor: C.accentDim,
+    borderWidth: 1.5,
+    borderColor: C.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 28,
+  },
   permTitle: {
-    fontSize: 22, fontWeight: "700", color: C.heading,
-    marginBottom: 12, textAlign: "center",
+    fontSize: 22,
+    fontWeight: "700",
+    color: C.heading,
+    marginBottom: 12,
+    textAlign: "center",
   },
   permSub: {
-    fontSize: 14, color: C.subtle, textAlign: "center",
-    lineHeight: 21, marginBottom: 28,
+    fontSize: 14,
+    color: C.subtle,
+    textAlign: "center",
+    lineHeight: 21,
+    marginBottom: 28,
   },
   grantBtn: {
     backgroundColor: C.accent,
-    paddingHorizontal: 32, paddingVertical: 14,
-    borderRadius: 12, marginBottom: 16,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   grantBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
-  switchLink: {
-    flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4,
-  },
-  switchLinkText: { color: C.accent, fontSize: 13, fontWeight: "600" },
+  switchLink: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+  switchLinkText: { color: C.accentText, fontSize: 13, fontWeight: "600" },
 
-  // Camera
+  // Camera overlay (viewfinder stays dark regardless of theme)
   camWrap: { flex: 1, backgroundColor: "#000" },
   overlay: { ...StyleSheet.absoluteFillObject, flexDirection: "column" },
   camTop: {
     flex: 1,
-    backgroundColor: C.overlay,
+    backgroundColor: "rgba(255,255,255,0.55)",
     alignItems: "center",
     justifyContent: "flex-end",
     paddingBottom: 10,
   },
-  camHeader: { alignItems: "center", paddingTop: 8, paddingBottom: 12 },
+  camHeader: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    paddingTop: 8,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    position: "relative",
+  },
   camTitle: {
-    color: C.heading, fontSize: 21, fontWeight: "800", letterSpacing: 1.5,
+    color: C.heading,
+    fontSize: 21,
+    fontWeight: "800",
+    letterSpacing: 1.5,
   },
   camMid: { flexDirection: "row", height: SCAN_BOX },
-  dimSide: { flex: 1, backgroundColor: C.overlay },
+  dimSide: { flex: 1, backgroundColor: "rgba(255,255,255,0.55)" },
   scanBox: { width: SCAN_BOX, height: SCAN_BOX, borderRadius: 4 },
-  corner: {
-    position: "absolute", width: 26, height: 26,
-    borderColor: C.accent, borderWidth: 3,
-  },
-  cTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 4 },
-  cTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 4 },
-  cBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 4 },
-  cBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 4 },
+  corner: { position: "absolute", width: 26, height: 26, borderColor: C.accent, borderWidth: 3 },
+  cTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
+  cTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
+  cBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
+  cBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
   camBottom: {
-    flex: 1.2, backgroundColor: C.overlay,
-    alignItems: "center", paddingTop: 28, gap: 20,
+    flex: 1.2,
+    backgroundColor: "rgba(255,255,255,0.55)",
+    alignItems: "center",
+    paddingTop: 28,
+    gap: 20,
   },
-  hint: { color: C.body, fontSize: 14, fontWeight: "500", textAlign: "center" },
+  hintRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  hint: { color: C.heading, fontSize: 14, fontWeight: "500" },
+  // Torch — absolutely pinned to viewport top-right, above everything
+  torchWrap: {
+    position: "absolute",
+    top: 0,
+    right: 16,
+    alignItems: "flex-end",
+    marginTop: 16,
+  },
   torchBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    paddingHorizontal: 20, paddingVertical: 10, borderRadius: 24,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   torchBtnOn: {
-    backgroundColor: "rgba(253,224,71,0.15)", borderColor: "#fde047",
+    backgroundColor: "rgba(245,158,11,0.15)",
+    borderColor: C.torchOn,
   },
-  torchLabel: { color: C.body, fontSize: 13, fontWeight: "600" },
+  torchLabel: { color: C.heading, fontSize: 13, fontWeight: "600" },
 
-  // Hardware
+  // Camera multi-scan: "Add QR" button (appears after each scan)
+  addQrBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: C.accent,
+    paddingHorizontal: 28,
+    paddingVertical: 11,
+    borderRadius: 24,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  addQrBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  // Camera multi-scan: "Generate PDF" button inside the camera view
+  camGenerateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: C.success,
+    paddingHorizontal: 28,
+    paddingVertical: 11,
+    borderRadius: 24,
+    shadowColor: C.success,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  camGenerateBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  // Wrapper that lets ScannedStrip float above the camera view at the bottom
+  camStripWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+
+  // Hardware screen
   hwWrap: { flex: 1, backgroundColor: C.bg },
-  hwScroll: { padding: 20, paddingBottom: 52 },
+  hwScroll: { padding: 20, paddingBottom: 16 },
   hwHeader: { alignItems: "center", marginBottom: 24 },
 
   deviceCard: {
-    flexDirection: "row", alignItems: "center", gap: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 14,
     backgroundColor: C.accentDim,
-    borderRadius: 14, padding: 16, marginBottom: 22,
-    borderWidth: 1, borderColor: C.accentBorder,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: C.accentBorder,
+  },
+  deviceIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.accentBorder,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   deviceTitle: { color: C.heading, fontSize: 15, fontWeight: "700", marginBottom: 4 },
   deviceSub: { color: C.subtle, fontSize: 13, lineHeight: 19 },
 
   inputGroup: { marginBottom: 16 },
   inputLabel: {
-    color: C.muted, fontSize: 10, fontWeight: "700",
-    letterSpacing: 1.2, marginBottom: 8,
+    color: C.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.2,
+    marginBottom: 12,
   },
+
+  // Static outer ring — solid accent blue with a small gap between ring and inner card
+  scanRingOuter: {
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: C.accent,
+    padding: 1,
+    marginBottom: 12,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+
+  // The visible big card
+  scanTargetBox: {
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    minHeight: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    overflow: "hidden",
+  },
+  scanTargetBoxFilled: {
+    borderColor: C.accent,
+    backgroundColor: "#f5f8ff",
+  },
+
+  // Invisible TextInput that sits on top, capturing all keystrokes
+  hiddenInput: {
+    position: "absolute",
+    top: 0, left: 0, right: 0, bottom: 0,
+    opacity: 0,
+    color: "transparent",
+  },
+
+  // Idle state (no text yet)
+  scanTargetIdle: {
+    alignItems: "center",
+    pointerEvents: "none",
+  },
+  scanTargetPlaceholder: {
+    color: C.muted,
+    fontSize: 17,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  scanTargetSub: {
+    color: C.muted,
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 17,
+  },
+
+  // Active state — scanned text display
+  scanTargetValue: {
+    color: C.heading,
+    fontSize: 16,
+    fontFamily: Platform.OS === "ios" ? "Courier New" : "monospace",
+    textAlign: "center",
+    lineHeight: 24,
+    pointerEvents: "none",
+  },
+
+  // Full-width Add button shown below box when text is present
+  addBtnFull: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: C.accent,
+    borderRadius: 12,
+    paddingVertical: 13,
+    marginBottom: 8,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  addBtnFullText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
+  // kept for any legacy reference but no longer used in HW scanner
+  inputRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
   input: {
     backgroundColor: C.surface,
-    borderRadius: 12, borderWidth: 2, borderColor: C.accent,
-    color: C.heading, fontSize: 15, padding: 16,
-    minHeight: 108, textAlignVertical: "top",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    color: C.heading,
+    fontSize: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     fontFamily: Platform.OS === "ios" ? "Courier New" : "monospace",
+    height: 52,
   },
   inputFilled: {
     borderColor: C.accent,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: "#f8faff",
   },
+  addBtn: {
+    backgroundColor: C.accent,
+    borderRadius: 12,
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  inputHint: { color: C.muted, fontSize: 11, marginTop: 2, lineHeight: 16 },
 
-  previewCard: {
-    backgroundColor: C.surface, borderRadius: 12, padding: 14,
-    marginBottom: 16, borderWidth: 1, borderColor: C.border,
-  },
-  previewRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
-  previewLabel: {
-    color: C.success, fontSize: 10, fontWeight: "700", letterSpacing: 1,
-  },
-  previewValue: { color: C.body, fontSize: 13, lineHeight: 20 },
-
-  actions: { gap: 12, marginBottom: 20 },
   primaryBtn: {
-    backgroundColor: C.accent, borderRadius: 12,
-    paddingVertical: 15, alignItems: "center",
-    flexDirection: "row", justifyContent: "center", gap: 8,
+    backgroundColor: C.accent,
+    borderRadius: 12,
+    paddingVertical: 15,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 4,
+    shadowColor: C.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  primaryBtnOff: { opacity: 0.38 },
+  primaryBtnOff: { opacity: 0.38, shadowOpacity: 0 },
   primaryBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
-  secondaryBtn: {
-    backgroundColor: C.surface, borderRadius: 12,
-    paddingVertical: 15, alignItems: "center",
-    flexDirection: "row", justifyContent: "center", gap: 8,
-    borderWidth: 1, borderColor: C.border,
-  },
-  secondaryBtnText: { color: C.subtle, fontSize: 14, fontWeight: "600" },
-  processingBox: { alignItems: "center", paddingVertical: 20 },
-  processingText: { color: C.subtle, fontSize: 14 },
-
-  tipsCard: {
-    backgroundColor: C.surface, borderRadius: 12, padding: 16,
-    borderWidth: 1, borderColor: C.border, gap: 8,
-  },
-  tipsRow: { flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 4 },
-  tipsTitle: { color: C.strong, fontSize: 13, fontWeight: "700" },
-  tipRow: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
-  tipText: { color: C.muted, fontSize: 12, lineHeight: 19, flex: 1 },
 });
