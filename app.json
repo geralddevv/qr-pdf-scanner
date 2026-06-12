@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "QR PDF Scanner",
+    "slug": "qr-pdf-scanner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourname.qrpdfscanner",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to scan QR codes."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.yourname.qrpdfscanner"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow QR PDF Scanner to access your camera to scan QR codes."
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "528d9863-bdca-43d9-ab56-7a19a8c82e44"
+      }
+    },
+    "owner": "gerald.2.5"
+  }
+}
