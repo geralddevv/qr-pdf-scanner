@@ -179,7 +179,40 @@ function ScannedStrip({ items, onRemove, onGenerate }) {
 }
 
 // ─── Camera Scanner ───────────────────────────────────────────────────────────
-function CameraScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
+function SessionBadge({ session, onChangeSession }) {
+  if (!session) return null;
+  return (
+    <TouchableOpacity style={sb.wrap} onPress={onChangeSession} activeOpacity={0.75}>
+      <Ionicons name="person-circle-outline" size={13} color={C.accentText} />
+      <Text style={sb.name} numberOfLines={1}>{session.username}</Text>
+      <Text style={sb.sep}>·</Text>
+      <Text style={sb.ref} numberOfLines={1}>{session.reference}</Text>
+      <Ionicons name="chevron-down" size={11} color={C.muted} />
+    </TouchableOpacity>
+  );
+}
+
+const sb = StyleSheet.create({
+  wrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: 8,
+    alignSelf: "center",
+    maxWidth: "85%",
+  },
+  name: { color: C.accentText, fontSize: 11, fontWeight: "700", flexShrink: 1 },
+  sep:  { color: C.muted, fontSize: 11 },
+  ref:  { color: C.subtle, fontSize: 11, flexShrink: 1 },
+});
+
+function CameraScanner({ onScanComplete, onSwitchMode, initialItems = [], session, onChangeSession }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [paused, setPaused]         = useState(false);   // true after each scan — waits for "Add QR" tap
   const [torch, setTorch]           = useState(false);
@@ -259,7 +292,12 @@ function CameraScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
         {/* Header */}
         <View style={s.camTop}>
           <SafeAreaView edges={["top"]} style={s.camHeader}>
-            <Text style={s.camTitle}>QR → PDF</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+              <Text style={s.camTitle}>QR</Text>
+              <Ionicons name="arrow-forward" size={18} color={C.heading} style={{ marginHorizontal: 8 }} />
+              <Text style={s.camTitle}>PDF</Text>
+            </View>
+            <SessionBadge session={session} onChangeSession={onChangeSession} />
             <ModeToggle mode="camera" onChangeMode={onSwitchMode} />
           </SafeAreaView>
         </View>
@@ -320,7 +358,7 @@ function CameraScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
 }
 
 // ─── Hardware Scanner ─────────────────────────────────────────────────────────
-function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
+function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [], session, onChangeSession }) {
   const [currentInput, setCurrentInput] = useState("");
   const [scannedItems, setScannedItems] = useState(initialItems);
   const inputRef    = useRef(null);
@@ -347,7 +385,8 @@ function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
       if (trimmed.length > 0) {
         const newItem = { raw: trimmed, scannedAt: new Date().toISOString() };
         setScannedItems((prev) => [...prev, newItem]);
-        setCurrentInput("");
+        // Keep the scanned data in the input field until the next scan overwrites it
+        setCurrentInput(trimmed);
         prevLenRef.current = 0;
         refocus();
       }
@@ -370,7 +409,8 @@ function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
     const trimmed = currentInput.trim();
     if (!trimmed) return;
     setScannedItems((prev) => [...prev, { raw: trimmed, scannedAt: new Date().toISOString() }]);
-    setCurrentInput("");
+    // Keep the data in the input field until the next scan overwrites it
+    setCurrentInput(trimmed);
     refocus();
   };
 
@@ -391,18 +431,33 @@ function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
             <ModeToggle mode="hardware" onChangeMode={onSwitchMode} />
           </View>
 
-          {/* Device info card */}
-          <View style={s.deviceCard}>
-            <View style={s.deviceIconWrap}>
-              <MaterialCommunityIcons name="barcode-scan" size={26} color={C.accent} />
+          {/* Session card */}
+          {session && (
+            <View style={s.sessionCard}>
+              <View style={s.sessionCardHeader}>
+                <Text style={s.sessionCardTitle}>Login Details</Text>
+                <TouchableOpacity style={s.sessionEditBtn} onPress={onChangeSession} activeOpacity={0.75}>
+                  <Feather name="edit-2" size={13} color={C.accentText} />
+                  <Text style={s.sessionEditBtnText}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={s.sessionHeaderDivider} />
+              <View style={s.sessionRow}>
+                <Text style={s.sessionRowLabel}>User</Text>
+                <Text style={s.sessionRowValue} numberOfLines={1}>{session.username}</Text>
+              </View>
+              <View style={s.sessionRowDivider} />
+              <View style={s.sessionRow}>
+                <Text style={s.sessionRowLabel}>Location</Text>
+                <Text style={s.sessionRowValue} numberOfLines={1}>{session.location}</Text>
+              </View>
+              <View style={s.sessionRowDivider} />
+              <View style={s.sessionRow}>
+                <Text style={s.sessionRowLabel}>Lot / Invoice / Batch No</Text>
+                <Text style={s.sessionRowValue} numberOfLines={1}>{session.reference}</Text>
+              </View>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.deviceTitle}>Scanning Mode</Text>
-              <Text style={s.deviceSub}>
-                Scan multiple QR codes one by one.
-              </Text>
-            </View>
-          </View>
+          )}
 
           {/* ── Big scan target box ── */}
           <View style={s.inputGroup}>
@@ -455,19 +510,6 @@ function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
               Scans auto-add on each scan. Tap "Add to list" or press Enter to add manually.
             </Text> */}
           </View>
-
-          {/* Generate button */}
-          <TouchableOpacity
-            style={[s.primaryBtn, !canGenerate && s.primaryBtnOff]}
-            onPress={handleGenerate}
-            disabled={!canGenerate}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="document-text-outline" size={18} color="#fff" />
-            <Text style={s.primaryBtnText}>
-              Generate PDF{scannedItems.length > 0 ? ` (${scannedItems.length} QR)` : ""}
-            </Text>
-          </TouchableOpacity>
         </ScrollView>
 
         {/* Sticky bottom strip */}
@@ -478,12 +520,12 @@ function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [] }) {
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
-export default function ScannerScreen({ onScanComplete, initialItems = [], initialMode = "camera" }) {
+export default function ScannerScreen({ onScanComplete, initialItems = [], initialMode = "camera", session, onChangeSession }) {
   const [mode, setMode] = useState(initialMode);
   return mode === "camera" ? (
-    <CameraScanner onScanComplete={onScanComplete} onSwitchMode={setMode} initialItems={initialItems} />
+    <CameraScanner onScanComplete={onScanComplete} onSwitchMode={setMode} initialItems={initialItems} session={session} onChangeSession={onChangeSession} />
   ) : (
-    <HardwareScanner onScanComplete={onScanComplete} onSwitchMode={setMode} initialItems={initialItems} />
+    <HardwareScanner onScanComplete={onScanComplete} onSwitchMode={setMode} initialItems={initialItems} session={session} onChangeSession={onChangeSession} />
   );
 }
 
@@ -802,30 +844,75 @@ const s = StyleSheet.create({
   hwScroll: { padding: 20, paddingBottom: 16 },
   hwHeader: { alignItems: "center", marginBottom: 24 },
 
-  deviceCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 14,
-    backgroundColor: C.accentDim,
-    borderRadius: 16,
-    padding: 16,
+  // Session card
+  sessionCard: {
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
     marginBottom: 22,
+    overflow: "hidden",
+  },
+  sessionCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: C.accentDim,
+  },
+  sessionCardTitle: {
+    color: C.accentText,
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  sessionEditBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderWidth: 1,
     borderColor: C.accentBorder,
   },
-  deviceIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.accentBorder,
+  sessionEditBtnText: {
+    color: C.accentText,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  sessionHeaderDivider: {
+    height: 1,
+    backgroundColor: C.border,
+  },
+  sessionRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  sessionRowLabel: {
+    color: C.muted,
+    fontSize: 12,
+    fontWeight: "600",
     flexShrink: 0,
   },
-  deviceTitle: { color: C.heading, fontSize: 15, fontWeight: "700", marginBottom: 4 },
-  deviceSub: { color: C.subtle, fontSize: 13, lineHeight: 19 },
+  sessionRowValue: {
+    flex: 1,
+    color: C.heading,
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  sessionRowDivider: {
+    height: 1,
+    backgroundColor: C.border,
+    marginHorizontal: 16,
+  },
 
   inputGroup: { marginBottom: 16 },
   inputLabel: {

@@ -9,6 +9,8 @@ import {
   Alert,
   Platform,
   Animated,
+  Modal,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as FileSystem from "expo-file-system";
@@ -63,39 +65,31 @@ function escapeHtml(raw) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function pageBlock(item, index, total) {
+function itemBlock(item, index, total, session) {
   const escaped = escapeHtml(item.raw);
   const type    = detectType(item.raw);
   const isUrl   = type === "URL";
-  const pageBreak = index < total - 1 ? "page-break-after:always;" : "";
 
   return `
-  <div style="${pageBreak}padding:40px 48px;min-height:100vh;box-sizing:border-box;">
-    <div class="page-header">
-      <div class="logo">QR</div>
-      <div>
-        <div class="page-title">QR Scan Report</div>
-        <div class="page-sub">Entry ${index + 1} of ${total}</div>
-      </div>
-      <div class="page-num">#${index + 1}</div>
+  <div class="item-card">
+    <div class="item-header">
+      <div class="item-badge">${type}</div>
+      <div class="item-num">#${index + 1}</div>
     </div>
-
-    <div class="badge">${type}</div>
 
     <div class="card">
       <div class="card-title">Scanned Content</div>
       <div class="card-value mono">${isUrl ? `<a class="url-link" href="${escaped}">${escaped}</a>` : escaped}</div>
     </div>
 
-    <div class="meta-grid">
-      <div class="card">
-        <div class="card-title">Content Type</div>
-        <div class="card-value">${type}</div>
-      </div>
-      <div class="card">
-        <div class="card-title">Scanned At</div>
-        <div class="card-value">${formatDate(item.scannedAt)}</div>
-      </div>
+    <div class="card">
+      <div class="card-title">Content Type</div>
+      <div class="card-value">${type}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Scanned At</div>
+      <div class="card-value">${formatDate(item.scannedAt)}</div>
     </div>
 
     <div class="card">
@@ -105,9 +99,56 @@ function pageBlock(item, index, total) {
   </div>`;
 }
 
-function buildMultiPageHtml(items, source) {
+function pageBlock(itemPair, pageIndex, totalPages, session) {
+  const [item1, item2] = itemPair;
+  const pageBreak = pageIndex < totalPages - 1 ? "page-break-after:always;" : "";
+  const sessionRow = session
+    ? `<div class="session-strip"><span class="session-field"><span class="session-key">User</span> ${escapeHtml(session.username)}</span><span class="session-divider"> | </span><span class="session-field"><span class="session-key">Location</span> ${escapeHtml(session.location)}</span><span class="session-divider"> | </span><span class="session-field"><span class="session-key">Lot/Inv/Batch</span> ${escapeHtml(session.reference)}</span></div>`
+    : "";
+
+  const item2Block = item2 ? itemBlock(item2, item2.originalIndex, item2.originalTotal, null) : "";
+
+  return `
+  <div style="${pageBreak}padding:40px 48px;min-height:100vh;box-sizing:border-box;">
+    <div class="page-header">
+      <div class="logo">QR</div>
+      <div>
+        <div class="page-title">QR Scan Report</div>
+        <div class="page-sub">Page ${pageIndex + 1} of ${totalPages}</div>
+      </div>
+    </div>
+
+    ${sessionRow}
+
+    <div class="items-grid">
+      ${itemBlock(item1, item1.originalIndex, item1.originalTotal, null)}
+      ${item2Block}
+    </div>
+  </div>`;
+}
+
+function buildMultiPageHtml(items, source, session) {
   const total = items.length;
-  const pages = items.map((item, i) => pageBlock(item, i, total)).join("\n");
+  
+  // Add original indices and total to each item for display
+  const itemsWithMeta = items.map((item, i) => ({
+    ...item,
+    originalIndex: i,
+    originalTotal: total,
+  }));
+
+  // Group items into pairs
+  const pages = [];
+  for (let i = 0; i < itemsWithMeta.length; i += 2) {
+    pages.push([itemsWithMeta[i], itemsWithMeta[i + 1]]);
+  }
+
+  const totalPages = pages.length;
+  const pagesHtml = pages.map((pair, i) => pageBlock(pair, i, totalPages, session)).join("\n");
+
+  const sessionFooter = session
+    ? ` • ${escapeHtml(session.username)} • ${escapeHtml(session.location)} • ${escapeHtml(session.reference)}`
+    : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -126,32 +167,43 @@ function buildMultiPageHtml(items, source) {
         line-height:44px;text-align:center;}
   .page-title{font-size:20px;font-weight:800;color:#0f1829;}
   .page-sub{font-size:12px;color:#6b7a9e;margin-top:2px;}
-  .page-num{margin-left:auto;background:rgba(37,99,235,0.10);color:#1d4ed8;
-            font-size:13px;font-weight:700;padding:4px 12px;
-            border-radius:20px;border:1px solid rgba(37,99,235,0.22);}
-  .badge{display:inline-block;background:rgba(37,99,235,0.10);color:#1d4ed8;
+  .session-strip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+                 background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.18);
+                 border-radius:8px;padding:8px 14px;margin-bottom:18px;font-size:12px;color:#3d4a6b;}
+  .session-field{display:flex;align-items:center;gap:4px;}
+  .session-key{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#8e9bbf;}
+  .session-divider{color:#b0b8d0;font-size:13px;}
+  .items-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;}
+  .item-card{display:flex;flex-direction:column;gap:14px;}
+  .item-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+  .item-badge{display:inline-block;background:rgba(37,99,235,0.10);color:#1d4ed8;
          font-size:11px;font-weight:700;letter-spacing:.5px;
-         padding:3px 10px;border-radius:20px;margin-bottom:18px;text-transform:uppercase;
+         padding:3px 10px;border-radius:20px;text-transform:uppercase;
          border:1px solid rgba(37,99,235,0.22);}
+  .item-num{margin-left:auto;background:rgba(37,99,235,0.10);color:#1d4ed8;
+            font-size:12px;font-weight:700;padding:4px 10px;
+            border-radius:16px;border:1px solid rgba(37,99,235,0.22);}
   .card{background:#fff;border-radius:12px;border:1px solid #d1d9f0;
-        padding:20px 24px;margin-bottom:16px;
+        padding:16px 18px;
         box-shadow:0 1px 4px rgba(37,99,235,0.06);}
   .card-title{font-size:10px;font-weight:700;letter-spacing:1px;
-              text-transform:uppercase;color:#8e9bbf;margin-bottom:8px;}
-  .card-value{font-size:14px;color:#0f1829;word-break:break-all;line-height:1.6;}
+              text-transform:uppercase;color:#8e9bbf;margin-bottom:6px;}
+  .card-value{font-size:13px;color:#0f1829;word-break:break-all;line-height:1.5;}
   .card-value.mono{font-family:'Courier New',Courier,monospace;background:#f0f4ff;
-                   padding:10px 12px;border-radius:6px;font-size:12px;color:#3d4a6b;}
+                   padding:8px 10px;border-radius:6px;font-size:11px;color:#3d4a6b;}
   .url-link{color:#2563eb;text-decoration:underline;}
-  .meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
   .footer-strip{background:#e8edf8;border-top:1px solid #d1d9f0;
                 padding:14px 48px;text-align:center;font-size:11px;color:#8e9bbf;
                 position:fixed;bottom:0;left:0;right:0;}
+  @media(max-width:800px){
+    .items-grid{grid-template-columns:1fr;}
+  }
 </style>
 </head>
 <body>
-${pages}
+${pagesHtml}
 <div class="footer-strip">
-  QR PDF Scanner &nbsp;•&nbsp; ${total} QR code${total > 1 ? "s" : ""} &nbsp;•&nbsp; ${formatDate(new Date().toISOString())} &nbsp;•&nbsp; Source: ${source}
+  QR PDF Scanner &nbsp;•&nbsp; ${total} QR code${total > 1 ? "s" : ""} &nbsp;•&nbsp; ${totalPages} page${totalPages > 1 ? "s" : ""} &nbsp;•&nbsp; ${formatDate(new Date().toISOString())} &nbsp;•&nbsp; Source: ${source}${sessionFooter}
 </div>
 </body>
 </html>`;
@@ -244,7 +296,7 @@ const sl = StyleSheet.create({
 });
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function ResultScreen({ data, onReset, onClearReset }) {
+export default function ResultScreen({ data, session, onReset, onClearReset, onChangeSession }) {
   const { items, source } = data;
   const [status, setStatus] = useState("idle");
   const [pdfUri, setPdfUri] = useState(null);
@@ -256,7 +308,7 @@ export default function ResultScreen({ data, onReset, onClearReset }) {
       try { Print = await import("expo-print"); }
       catch { throw new Error("expo-print is not installed. Run: npx expo install expo-print"); }
 
-      const html = buildMultiPageHtml(items, source);
+      const html = buildMultiPageHtml(items, source, session);
       const { uri } = await Print.printToFileAsync({ html, base64: false });
       const dest = FileSystem.cacheDirectory + `QR_Scan_${Date.now()}.pdf`;
       await FileSystem.moveAsync({ from: uri, to: dest });
@@ -268,6 +320,21 @@ export default function ResultScreen({ data, onReset, onClearReset }) {
       Alert.alert("PDF Error", err.message || "Could not generate PDF.");
     }
   }, [items, source]);
+
+  const previewPdf = useCallback(async () => {
+    if (!pdfUri) return;
+    try {
+      const supported = await Linking.canOpenURL(`file://${pdfUri}`);
+      if (supported) {
+        await Linking.openURL(`file://${pdfUri}`);
+      } else {
+        Alert.alert("Cannot Open", "No PDF viewer available on this device. Try sharing instead.");
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Could not open PDF preview.");
+    }
+  }, [pdfUri]);
 
   const sharePdf = useCallback(async () => {
     if (!pdfUri) return;
@@ -300,6 +367,21 @@ export default function ResultScreen({ data, onReset, onClearReset }) {
             <Text style={s.sourceBadgeText}>{source === "camera" ? "Camera" : "Hardware"}</Text>
           </View>
         </View>
+
+        {/* Session info strip */}
+        {session && (
+          <TouchableOpacity style={s.sessionStrip} onPress={onChangeSession} activeOpacity={0.8}>
+            <Ionicons name="person-circle-outline" size={14} color={C.accentText} />
+            <Text style={s.sessionStripText} numberOfLines={1}>
+              <Text style={s.sessionKey}>Operator </Text>{session.username}
+              <Text style={s.sessionSep}>  ·  </Text>
+              <Text style={s.sessionKey}>Location </Text>{session.location}
+              <Text style={s.sessionSep}>  ·  </Text>
+              <Text style={s.sessionKey}>Ref </Text>{session.reference}
+            </Text>
+            <Feather name="edit-2" size={11} color={C.muted} style={{ marginLeft: "auto" }} />
+          </TouchableOpacity>
+        )}
 
         {/* Hero */}
         <View style={s.hero}>
@@ -355,9 +437,9 @@ export default function ResultScreen({ data, onReset, onClearReset }) {
                 <Ionicons name="share-outline" size={18} color="#fff" />
                 <Text style={s.primaryBtnText}>Share PDF</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.secondaryBtn} onPress={generatePdf} activeOpacity={0.8}>
-                <Ionicons name="refresh-outline" size={16} color={C.subtle} />
-                <Text style={s.secondaryBtnText}>Regenerate</Text>
+              <TouchableOpacity style={s.secondaryBtn} onPress={previewPdf} activeOpacity={0.8}>
+                <Ionicons name="eye-outline" size={16} color={C.subtle} />
+                <Text style={s.secondaryBtnText}>Preview</Text>
               </TouchableOpacity>
             </>
           )}
@@ -429,7 +511,35 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  sessionStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    backgroundColor: C.accentDim,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.accentBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 16,
+  },
+  sessionStripText: {
+    flex: 1,
+    color: C.body,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  sessionKey: {
+    color: C.muted,
+    fontWeight: "700",
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  sessionSep: {
+    color: C.border,
   },
   backBtn: { flexDirection: "row", alignItems: "center", gap: 6 },
   backText: { color: C.accentText, fontSize: 14, fontWeight: "600" },
