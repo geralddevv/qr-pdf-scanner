@@ -253,6 +253,8 @@ export default function SessionScreen({ onSessionStart }) {
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   scroll: {
+    flexGrow: 1,
+    justifyContent: "center",
     padding: 24,
     paddingBottom: 32,
   },

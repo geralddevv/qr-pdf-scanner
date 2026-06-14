@@ -13,6 +13,7 @@ import {
   Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { WebView } from "react-native-webview";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
@@ -300,6 +301,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   const { items, source } = data;
   const [status, setStatus] = useState("idle");
   const [pdfUri, setPdfUri] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const generatePdf = useCallback(async () => {
     setStatus("generating");
@@ -309,32 +311,21 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
       catch { throw new Error("expo-print is not installed. Run: npx expo install expo-print"); }
 
       const html = buildMultiPageHtml(items, source, session);
-      const { uri } = await Print.printToFileAsync({ html, base64: false });
-      const dest = FileSystem.cacheDirectory + `QR_Scan_${Date.now()}.pdf`;
-      await FileSystem.moveAsync({ from: uri, to: dest });
-      setPdfUri(dest);
+      // Let expo-print write to its own temp location — don't move it,
+      // moving across directories on Android can fail
+      const { uri } = await Print.printToFileAsync({ html });
+      setPdfUri(uri);
       setStatus("done");
     } catch (err) {
       console.error(err);
       setStatus("error");
       Alert.alert("PDF Error", err.message || "Could not generate PDF.");
     }
-  }, [items, source]);
+  }, [items, source, session]);
 
-  const previewPdf = useCallback(async () => {
-    if (!pdfUri) return;
-    try {
-      const supported = await Linking.canOpenURL(`file://${pdfUri}`);
-      if (supported) {
-        await Linking.openURL(`file://${pdfUri}`);
-      } else {
-        Alert.alert("Cannot Open", "No PDF viewer available on this device. Try sharing instead.");
-      }
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Could not open PDF preview.");
-    }
-  }, [pdfUri]);
+  const previewPdf = useCallback(() => {
+    setShowPreview(true);
+  }, []);
 
   const sharePdf = useCallback(async () => {
     if (!pdfUri) return;
@@ -463,6 +454,36 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
         </View>
 
       </View>
+
+      {/* ── In-app HTML Preview Modal ── */}
+      <Modal
+        visible={showPreview}
+        animationType="slide"
+        onRequestClose={() => setShowPreview(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: "#f0f4ff" }} edges={["top", "bottom"]}>
+          <View style={s.previewHeader}>
+            <TouchableOpacity onPress={() => setShowPreview(false)} activeOpacity={0.8} style={s.previewClose}>
+              <Ionicons name="close" size={22} color="#1e2a4a" />
+            </TouchableOpacity>
+            <Text style={s.previewTitle}>PDF Preview</Text>
+            <TouchableOpacity onPress={sharePdf} activeOpacity={0.8} style={s.previewShare}>
+              <Ionicons name="share-outline" size={20} color="#2563eb" />
+            </TouchableOpacity>
+          </View>
+          <WebView
+            style={{ flex: 1 }}
+            originWhitelist={["*"]}
+            source={{ html: buildMultiPageHtml(items, source, session) }}
+            startInLoadingState
+            renderLoading={() => (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                <ActivityIndicator size="large" color="#2563eb" />
+              </View>
+            )}
+          />
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -684,4 +705,26 @@ const s = StyleSheet.create({
     borderColor: C.errorBorder,
   },
   errorText: { color: C.error, fontSize: 13, fontWeight: "600" },
+
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: C.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  previewTitle: {
+    color: C.heading,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  previewClose: {
+    padding: 4,
+  },
+  previewShare: {
+    padding: 4,
+  },
 });

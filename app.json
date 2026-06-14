@@ -35,7 +35,8 @@
         {
           "cameraPermission": "Allow QR PDF Scanner to access your camera to scan QR codes."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

@@ -361,9 +361,10 @@ function CameraScanner({ onScanComplete, onSwitchMode, initialItems = [], sessio
 function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [], session, onChangeSession }) {
   const [currentInput, setCurrentInput] = useState("");
   const [scannedItems, setScannedItems] = useState(initialItems);
-  const inputRef    = useRef(null);
-  const appStateRef = useRef(AppState.currentState);
-  const prevLenRef  = useRef(0);
+  const inputRef      = useRef(null);
+  const appStateRef   = useRef(AppState.currentState);
+  const prevLenRef    = useRef(0);
+  const committedRef  = useRef(false); // true when input shows committed data, clears on next scan
 
   const refocus = useCallback(() => {
     setTimeout(() => inputRef.current?.focus(), 80);
@@ -379,14 +380,22 @@ function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [], sess
   }, [refocus]);
 
   const handleTextChange = useCallback((text) => {
+    // If previous scan's data is sitting in the field and a new scan starts,
+    // clear it first so only the new scan data is shown
+    if (committedRef.current) {
+      committedRef.current = false;
+      setCurrentInput(text.replace(/.*\n?/, "").trimStart());
+      return;
+    }
     setCurrentInput(text);
     if (text.endsWith("\n")) {
       const trimmed = text.trim();
       if (trimmed.length > 0) {
         const newItem = { raw: trimmed, scannedAt: new Date().toISOString() };
         setScannedItems((prev) => [...prev, newItem]);
-        // Keep the scanned data in the input field until the next scan overwrites it
+        // Show the scanned value in the field — next scan will overwrite it
         setCurrentInput(trimmed);
+        committedRef.current = true;
         prevLenRef.current = 0;
         refocus();
       }
@@ -499,12 +508,12 @@ function HardwareScanner({ onScanComplete, onSwitchMode, initialItems = [], sess
             </View>
 
             {/* Add button — only shown when there's text */}
-            {hasText && (
+            {/* {hasText && (
               <TouchableOpacity style={s.addBtnFull} onPress={handleManualCommit} activeOpacity={0.85}>
                 <Feather name="plus" size={18} color="#fff" />
                 <Text style={s.addBtnFullText}>Add to list</Text>
               </TouchableOpacity>
-            )}
+            )} */}
 
             {/* <Text style={s.inputHint}>
               Scans auto-add on each scan. Tap "Add to list" or press Enter to add manually.
