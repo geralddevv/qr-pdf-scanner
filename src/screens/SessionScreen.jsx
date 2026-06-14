@@ -62,11 +62,7 @@ function Field({ label, icon, placeholder, value, onChangeText, inputRef, onSubm
           autoCorrect={false}
           blurOnSubmit={returnKeyType === "done"}
         />
-        {filled && (
-          <View style={f.checkWrap}>
-            <Ionicons name="checkmark-circle" size={18} color={C.success} />
-          </View>
-        )}
+
       </View>
     </View>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -302,6 +302,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   const [status, setStatus] = useState("idle");
   const [pdfUri, setPdfUri] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const tickScale = useRef(new Animated.Value(1)).current;
 
   const generatePdf = useCallback(async () => {
     setStatus("generating");
@@ -359,34 +360,19 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
           </View>
         </View>
 
-        {/* Session info strip */}
-        {session && (
-          <TouchableOpacity style={s.sessionStrip} onPress={onChangeSession} activeOpacity={0.8}>
-            <Ionicons name="person-circle-outline" size={14} color={C.accentText} />
-            <Text style={s.sessionStripText} numberOfLines={1}>
-              <Text style={s.sessionKey}>Operator </Text>{session.username}
-              <Text style={s.sessionSep}>  ·  </Text>
-              <Text style={s.sessionKey}>Location </Text>{session.location}
-              <Text style={s.sessionSep}>  ·  </Text>
-              <Text style={s.sessionKey}>Ref </Text>{session.reference}
-            </Text>
-            <Feather name="edit-2" size={11} color={C.muted} style={{ marginLeft: "auto" }} />
-          </TouchableOpacity>
-        )}
-
         {/* Hero */}
         <View style={s.hero}>
-          <View style={s.heroIconRing}>
+          <View style={[s.heroIconRing, status === "done" && s.heroIconRingSuccess]}>
             <Ionicons name="checkmark" size={28} color="#fff" />
           </View>
-          <Text style={s.heroTitle}>
-            {isSingle ? "QR Code Scanned!" : `${items.length} QR Codes Scanned!`}
-          </Text>
-          <Text style={s.heroSub}>
-            {isSingle
-              ? "Ready to generate your PDF."
-              : `Each code will appear on its own page in the PDF.`}
-          </Text>
+          <View style={s.heroText}>
+            <Text style={s.heroTitle}>
+              {status === "done" ? "PDF Generated!" : (isSingle ? "QR Code Scanned!" : `${items.length} QR Codes Scanned!`)}
+            </Text>
+            <Text style={s.heroSub}>
+              {status === "done" ? (isSingle ? "1 QR Code" : `${items.length} QR Codes`) : "Ready to generate PDF"}
+            </Text>
+          </View>
         </View>
 
         {/* Scan list — scrolls internally, page stays fixed */}
@@ -420,10 +406,6 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
 
           {status === "done" && (
             <>
-              <View style={s.doneBox}>
-                <MaterialCommunityIcons name="check-decagram" size={22} color={C.success} />
-                <Text style={s.doneText}>PDF Ready!</Text>
-              </View>
               <TouchableOpacity style={s.primaryBtn} onPress={sharePdf} activeOpacity={0.85}>
                 <Ionicons name="share-outline" size={18} color="#fff" />
                 <Text style={s.primaryBtnText}>Share PDF</Text>
@@ -584,10 +566,12 @@ const s = StyleSheet.create({
 
   // Hero – replaced success-dim background with a bold blue gradient effect via border
   hero: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 16,
     backgroundColor: C.surface,
     borderRadius: 20,
-    padding: 28,
+    padding: 18,
     marginBottom: 16,
     borderWidth: 1.5,
     borderColor: C.accentBorder,
@@ -604,15 +588,22 @@ const s = StyleSheet.create({
     backgroundColor: C.accent,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+    flexShrink: 0,
     shadowColor: C.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 12,
     elevation: 6,
   },
-  heroTitle: { color: C.heading, fontSize: 19, fontWeight: "800", marginBottom: 6 },
-  heroSub: { color: C.subtle, fontSize: 13, textAlign: "center", lineHeight: 19 },
+  heroIconRingSuccess: {
+    backgroundColor: C.success,
+    shadowColor: C.success,
+  },
+  heroText: {
+    flex: 1,
+  },
+  heroTitle: { color: C.heading, fontSize: 19, fontWeight: "800", marginBottom: 2 },
+  heroSub: { color: C.subtle, fontSize: 13, lineHeight: 19 },
 
   card: {
     backgroundColor: C.surface,
