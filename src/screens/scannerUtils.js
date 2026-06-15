@@ -154,8 +154,8 @@ export function ScannedStrip({ items, onRemove, onGenerate }) {
         </View>
         {onGenerate && (
           <TouchableOpacity style={strip.generateBtn} onPress={onGenerate} activeOpacity={0.85}>
-            <Ionicons name="document-text-outline" size={16} color="#fff" />
-            <Text style={strip.generateBtnText}>Generate PDF</Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" />
+            <Text style={strip.generateBtnText}>Next</Text>
           </TouchableOpacity>
         )}
       </View>

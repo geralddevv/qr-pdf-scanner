@@ -11,6 +11,7 @@ import {
   Animated,
   Modal,
   Linking,
+  BackHandler,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
@@ -49,14 +50,97 @@ function detectType(raw) {
   if (/^tel:/i.test(raw)) return "Phone";
   if (/^(BEGIN:VCARD|BEGIN:VCAL)/i.test(raw)) return "Contact / Calendar";
   if (/^WIFI:/i.test(raw)) return "Wi-Fi";
+  // Check if it looks like pharmaceutical/structured data (contains multiple key:value pairs)
+  // Match patterns like "Key:value" with at least 2 occurrences
+  const keyValueCount = (raw.match(/[A-Za-z0-9\s\-\/\.\(\)&]+?:\s*[^:]+/g) || []).length;
+  if (keyValueCount >= 2) return "Pharma Data";
   return "Text";
 }
 
-function formatDate(iso) {
-  return new Date(iso).toLocaleString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
+// ─── Pharmaceutical Data Parser ────────────────────────────────────────────────
+function parsePharmaData(raw) {
+  const pairs = [];
+  
+  try {
+    // More flexible regex to match keys with letters, numbers, spaces, periods, hyphens, parentheses, etc.
+    // Matches: "key:", "Key Name:", "BATCH NO.:", "Date of Mfg:", etc.
+    const keyRegex = /([A-Za-z0-9\s\-\/\.\(\)&]+?):\s*/g;
+    let match;
+    const keys = [];
+    
+    // Find all keys and their positions
+    while ((match = keyRegex.exec(raw)) !== null) {
+      const keyText = match[1].trim();
+      // Only add if key is not empty and doesn't look like a sentence fragment
+      if (keyText && keyText.length < 100) {
+        keys.push({
+          key: keyText,
+          startIndex: match.index,
+          endIndex: match.index + match[0].length
+        });
+      }
+    }
+    
+    // If no structured data found, return null
+    if (keys.length === 0) {
+      return null;
+    }
+    
+    // Extract values for each key
+    for (let i = 0; i < keys.length; i++) {
+      const currentKey = keys[i];
+      const nextKeyIndex = i + 1 < keys.length ? keys[i + 1].startIndex : raw.length;
+      
+      // Get value from end of key to start of next key
+      let value = raw.substring(currentKey.endIndex, nextKeyIndex).trim();
+      
+      // Remove trailing comma, period, or whitespace
+      value = value.replace(/[\s,.\s]+$/, '').trim();
+      
+      // Only add pairs where both key and value exist and value isn't empty
+      if (currentKey.key && value && value.length > 0) {
+        pairs.push({ key: currentKey.key, value });
+      }
+    }
+    
+    return pairs.length > 0 ? pairs : null;
+  } catch (error) {
+    // If parsing fails, return null to fall back to text display
+    console.warn("Pharma data parsing error:", error);
+    return null;
+  }
+}
+
+function formatDateForLogin(iso) {
+  const date = new Date(iso);
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const day = date.getDate();
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const ampm = date.getHours() >= 12 ? 'PM' : 'AM';
+  return `${day} ${month}, ${hours}:${minutes}:${seconds} ${ampm}`;
+}
+
+function formatDateOnly(iso) {
+  const date = new Date(iso);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function formatTimeOnly(iso) {
+  const date = new Date(iso);
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12 || 12;
+  hours = String(hours).padStart(2, '0');
+  return `${hours}:${minutes}:${seconds} ${ampm}`;
 }
 
 // ─── PDF builders ─────────────────────────────────────────────────────────────
@@ -69,12 +153,12 @@ function escapeHtml(raw) {
 function buildMultiPageHtml(items, source, session) {
   const total = items.length;
 
-  // Build session table (Table 1)
+  // ── helpers ──────────────────────────────────────────────────────────────
   const sessionTableHtml = session ? `
     <table class="session-table">
       <thead>
         <tr>
-          <th>Username / Operator</th>
+          <th>Username</th>
           <th>Location</th>
           <th>Lot / Invoice / Batch No.</th>
           <th>Generated</th>
@@ -85,7 +169,7 @@ function buildMultiPageHtml(items, source, session) {
           <td>${escapeHtml(session.username)}</td>
           <td>${escapeHtml(session.location)}</td>
           <td>${escapeHtml(session.reference)}</td>
-          <td>${formatDate(new Date().toISOString())}</td>
+          <td>${formatDateForLogin(new Date().toISOString())}</td>
         </tr>
       </tbody>
     </table>
@@ -96,12 +180,12 @@ function buildMultiPageHtml(items, source, session) {
           <th>Generated</th>
           <th>Source</th>
           <th>Total Items</th>
-          <th colspan="1"></th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>${formatDate(new Date().toISOString())}</td>
+          <td>${formatDateForLogin(new Date().toISOString())}</td>
           <td>${source}</td>
           <td>${total}</td>
           <td></td>
@@ -110,133 +194,184 @@ function buildMultiPageHtml(items, source, session) {
     </table>
   `;
 
-  // Build individual item tables
-  const itemTablesHtml = items.map((item, i) => {
+  // Build one HTML block per scanned item
+  const itemBlocks = items.map((item, i) => {
     const type = detectType(item.raw);
-    const displayValue = item.raw;
-    return `
-      <div class="table-wrapper">
-        <div class="table-label">Scanned Item #${i + 1}</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>Content</th>
-              <th>Date</th>
-              <th>Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td class="type">${type}</td>
-              <td class="content">${escapeHtml(displayValue)}</td>
-              <td class="date">${new Date(item.scannedAt).toLocaleDateString()}</td>
-              <td class="time">${new Date(item.scannedAt).toLocaleTimeString()}</td>
-            </tr>
-          </tbody>
-        </table>
+    const parsedData = type === "Pharma Data" ? parsePharmaData(item.raw) : null;
+
+    if (parsedData) {
+      const rowsHtml = parsedData.map((pair) => `
+        <tr>
+          <td class="pharma-key">${escapeHtml(pair.key)}</td>
+          <td class="pharma-value">${escapeHtml(pair.value)}</td>
+        </tr>
+      `).join('');
+      return `
+        <div class="item-block">
+          <div class="table-label">Scanned Item #${i + 1}</div>
+          <table class="pharma-table">
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <div class="table-meta">
+            <span>${formatDateOnly(item.scannedAt)}</span>
+            <span>${formatTimeOnly(item.scannedAt)}</span>
+          </div>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="item-block">
+          <div class="table-label">Scanned Item #${i + 1}</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Content</th>
+                <th>Date</th>
+                <th>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="type">${type}</td>
+                <td class="content">${escapeHtml(item.raw)}</td>
+                <td class="date">${formatDateOnly(item.scannedAt)}</td>
+                <td class="time">${formatTimeOnly(item.scannedAt)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+  });
+
+  // Page 1: login info + first 2 items
+  const page1 = `
+    <div class="page">
+      <div class="section-label">LOGIN INFORMATION</div>
+      ${sessionTableHtml}
+      ${itemBlocks.slice(0, 2).join('')}
+    </div>
+  `;
+
+  // Page 2+: remaining items, 2 per page
+  const remaining = itemBlocks.slice(2);
+  let extraPages = '';
+  for (let i = 0; i < remaining.length; i += 2) {
+    extraPages += `
+      <div class="page">
+        ${remaining[i]}
+        ${remaining[i + 1] || ''}
       </div>
     `;
-  }).join('\n');
+  }
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=800, shrink-to-fit=yes"/>
 <title>QR Scan Report</title>
 <style>
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
   @page {
     size: A4;
-    margin: 20mm;
+    margin: 15mm;
   }
+
   body {
     font-family: Arial, Helvetica, sans-serif;
-    background: #fff;
+    font-size: 11px;
     color: #000;
-    padding: 40px;
-    width: 210mm;
-    height: 297mm;
-    margin: 0 auto;
+    background: #fff;
   }
-  .table-wrapper {
-    margin-bottom: 20px;
-    page-break-inside: avoid;
+
+  /* Each .page fills one A4 sheet and forces a break after it */
+  .page {
+    width: 100%;
+    min-height: 267mm;
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 8mm 0;
   }
-  .table-label {
-    font-size: 12px;
+
+  /* Don't add a trailing blank page after the last one */
+  .page:last-child {
+    page-break-after: avoid;
+  }
+
+  .section-label {
+    font-size: 10px;
     font-weight: bold;
-    text-transform: uppercase;
+    letter-spacing: 1.2px;
     color: #555;
-    margin-bottom: 8px;
-    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
   }
+
+  .item-block {
+    margin-top: 20px;
+  }
+
+  .table-label {
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #555;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
   table {
     width: 100%;
     border-collapse: collapse;
     font-size: 11px;
   }
-  thead {
-    background-color: #f5f5f5;
-  }
+
   th {
     border: 1px solid #000;
-    padding: 8px;
+    padding: 7px 8px;
     text-align: left;
-    font-weight: bold;
     font-size: 10px;
+    font-weight: bold;
     text-transform: uppercase;
     background-color: #e8e8e8;
   }
+
   td {
     border: 1px solid #000;
-    padding: 8px;
+    padding: 7px 8px;
   }
-  tr:nth-child(even) {
+
+  tr:nth-child(even) td {
     background-color: #f9f9f9;
   }
-  .type {
-    text-align: center;
-    width: 15%;
-    font-weight: 600;
-  }
-  .content {
-    width: 50%;
-    word-break: break-word;
-    font-family: monospace;
-    font-size: 10px;
-  }
-  .date {
-    width: 17.5%;
-    text-align: center;
-  }
-  .time {
-    width: 17.5%;
-    text-align: center;
-  }
-  .session-table {
-    width: 100%;
-  }
-  @media print {
-    body {
-      padding: 20px;
-    }
+
+  .session-table { margin-bottom: 0; }
+
+  .type   { text-align: center; width: 15%; font-weight: 600; }
+  .content { width: 50%; word-break: break-word; font-size: 10px; }
+  .date   { width: 17.5%; text-align: center; }
+  .time   { width: 17.5%; text-align: center; }
+
+  .pharma-table td { border: 1px solid #000; padding: 7px 8px; font-size: 10px; }
+  .pharma-key   { font-weight: bold; width: 35%; background-color: #e8e8e8; }
+  .pharma-value { word-break: break-word; }
+
+  .table-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 5px;
+    font-size: 9px;
+    color: #555;
   }
 </style>
 </head>
 <body>
-  <div class="table-wrapper">
-    <div class="table-label">Login Information</div>
-    ${sessionTableHtml}
-  </div>
-
-  ${itemTablesHtml}
-
+  ${page1}
+  ${extraPages}
 </body>
 </html>`;
 }
@@ -335,6 +470,16 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   const [showPreview, setShowPreview] = useState(false);
   const tickScale = useRef(new Animated.Value(1)).current;
 
+  // ── Handle Android back button ──────────────────────────────────────────
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
+      onReset();
+      return true; // Indicate we've handled the back button
+    });
+
+    return () => backHandler.remove();
+  }, [onReset]);
+
   const generatePdf = useCallback(async () => {
     setStatus("generating");
     try {
@@ -423,7 +568,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
             <TouchableOpacity style={s.primaryBtn} onPress={generatePdf} activeOpacity={0.85}>
               <Ionicons name="document-text-outline" size={18} color="#fff" />
               <Text style={s.primaryBtnText}>
-                Generate PDF{items.length > 1 ? ` (${items.length} pages)` : ""}
+                Generate PDF
               </Text>
             </TouchableOpacity>
           )}
@@ -437,14 +582,20 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
 
           {status === "done" && (
             <>
+              <View style={s.rowBtns}>
+                <TouchableOpacity style={[s.secondaryBtn, s.rowBtn]} onPress={previewPdf} activeOpacity={0.8}>
+                  <Ionicons name="eye-outline" size={16} color={C.subtle} />
+                  <Text style={s.secondaryBtnText}>Preview</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.secondaryBtn, s.rowBtn]} onPress={onReset} activeOpacity={0.8}>
+                  <Ionicons name="camera-outline" size={16} color={C.subtle} />
+                  <Text style={s.secondaryBtnText}>Scan More</Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity style={s.primaryBtn} onPress={sharePdf} activeOpacity={0.85}>
                 <Ionicons name="share-outline" size={18} color="#fff" />
                 <Text style={s.primaryBtnText}>Share PDF</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.secondaryBtn} onPress={previewPdf} activeOpacity={0.8}>
-                <Ionicons name="eye-outline" size={16} color={C.subtle} />
-                <Text style={s.secondaryBtnText}>Preview</Text>
-              </TouchableOpacity>
+              </TouchableOpacity>              
             </>
           )}
 
@@ -460,10 +611,12 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
             </>
           )}
 
-          <TouchableOpacity style={s.secondaryBtn} onPress={onReset} activeOpacity={0.8}>
-            <Ionicons name="camera-outline" size={16} color={C.subtle} />
-            <Text style={s.secondaryBtnText}>Scan More QR Codes</Text>
-          </TouchableOpacity>
+          {status !== "done" && (
+            <TouchableOpacity style={s.secondaryBtn} onPress={onReset} activeOpacity={0.8}>
+              <Ionicons name="camera-outline" size={16} color={C.subtle} />
+              <Text style={s.secondaryBtnText}>Scan More QR Codes</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
       </View>
@@ -699,6 +852,13 @@ const s = StyleSheet.create({
     gap: 8,
     borderWidth: 1,
     borderColor: C.border,
+  },
+  rowBtns: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  rowBtn: {
+    flex: 1,
   },
   secondaryBtnText: { color: C.subtle, fontSize: 14, fontWeight: "600" },
 

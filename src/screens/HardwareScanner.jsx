@@ -27,15 +27,19 @@ export default function HardwareScanner({
   session,
   onChangeSession,
 }) {
+  // scannedItems holds only fully committed items.
+  // currentInput is the live text in the hidden field — it is NOT in scannedItems.
+  // We never put currentInput into scannedItems until a \n arrives or the user
+  // manually commits, so there is no double-entry possible.
   const [currentInput, setCurrentInput] = useState("");
   const [scannedItems, setScannedItems] = useState(initialItems);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const inputRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
-  const prevLenRef = useRef(0);
-  const committedRef = useRef(false); // true when input shows committed data, clears on next scan
-
   const switchingModeRef = useRef(false);
+  // justCommitted: set to true the moment we push an item, cleared as soon as
+  // the field is wiped so the next scan starts fresh.
+  const justCommitted = useRef(false);
 
   const refocus = useCallback(() => {
     setTimeout(() => {
@@ -50,7 +54,6 @@ export default function HardwareScanner({
   //   onSwitchMode(newMode);
   // }, [onSwitchMode]);
 
-
   useEffect(() => {
     refocus();
     const sub = AppState.addEventListener("change", (next) => {
@@ -62,64 +65,73 @@ export default function HardwareScanner({
   }, [refocus]);
 
   const handleTextChange = useCallback((text) => {
-    // If previous scan's data is sitting in the field and a new scan starts,
-    // clear it first so only the new scan data is shown
-    if (committedRef.current) {
-      committedRef.current = false;
-      setCurrentInput(text.replace(/.*\n?/, "").trimStart());
+    // If a scan was just committed, the field still shows the old value.
+    // The new scan arrives as text appended to that stale value — strip it.
+    if (justCommitted.current) {
+      justCommitted.current = false;
+      // Everything before (and including) the first newline is the old value.
+      // What remains after it is the first character(s) of the new scan.
+      const fresh = text.includes("\n") ? text.slice(text.indexOf("\n") + 1) : text.replace(/^.*/, "");
+      setCurrentInput(fresh);
       return;
     }
+
     setCurrentInput(text);
+
+    // Hardware scanner appends \n at the end — that is our commit signal.
     if (text.endsWith("\n")) {
       const trimmed = text.trim();
-      if (trimmed.length > 0) {
-        const newItem = { raw: trimmed, scannedAt: new Date().toISOString() };
-        setScannedItems((prev) => [...prev, newItem]);
-        // Show the scanned value in the field — next scan will overwrite it
-        setCurrentInput(trimmed);
-        committedRef.current = true;
-        prevLenRef.current = 0;
-        refocus();
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    // Watch for backspace: if input got shorter, we're editing, so cancel the committed flag
-    if (currentInput.length < prevLenRef.current) {
-      committedRef.current = false;
-    }
-    prevLenRef.current = currentInput.length;
-  }, [currentInput]);
-
-  useEffect(() => {
-    if (!inputRef.current) {
+      if (trimmed.length === 0) return;
+      justCommitted.current = true;
+      setScannedItems((prev) => [...prev, { raw: trimmed, scannedAt: new Date().toISOString() }]);
+      // Show the value in the field so the user sees what was scanned.
+      // The next onChange will detect justCommitted and wipe it.
+      setCurrentInput(trimmed);
       refocus();
     }
+  }, [refocus]);
+
+  useEffect(() => {
+    if (!inputRef.current) refocus();
   }, [refocus]);
 
   const handleRemoveItem = useCallback((index) => {
     setScannedItems((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  const handleGenerate = () => {
-    const items = [...scannedItems];
-    const pending = currentInput.trim();
-    if (pending) items.push({ raw: pending, scannedAt: new Date().toISOString() });
-    if (items.length === 0) return;
-    onScanComplete({ items, source: "hardware" });
-  };
-
-  const handleManualCommit = () => {
+  // onSubmitEditing fires when the scanner sends \n.
+  // By the time it fires, handleTextChange has already committed the item
+  // (justCommitted is true). So we just refocus — never add again.
+  const handleManualCommit = useCallback(() => {
+    if (justCommitted.current) {
+      // already handled by handleTextChange
+      refocus();
+      return;
+    }
+    // User typed something manually and pressed the keyboard "done" button.
     const trimmed = currentInput.trim();
     if (!trimmed) return;
+    justCommitted.current = true;
     setScannedItems((prev) => [...prev, { raw: trimmed, scannedAt: new Date().toISOString() }]);
-    // Keep the data in the input field until the next scan overwrites it
     setCurrentInput(trimmed);
     refocus();
-  };
+  }, [currentInput, refocus]);
 
-  const canGenerate = scannedItems.length > 0 || currentInput.trim().length > 0;
+  // Generate: scannedItems already contains everything committed.
+  // currentInput at this point is either the displayed last-committed value
+  // (justCommitted=true, already in list) or something the user typed without
+  // pressing enter (justCommitted=false, not yet in list).
+  const handleGenerate = useCallback(() => {
+    const items = [...scannedItems];
+    if (!justCommitted.current) {
+      const pending = currentInput.trim();
+      if (pending) items.push({ raw: pending, scannedAt: new Date().toISOString() });
+    }
+    if (items.length === 0) return;
+    onScanComplete({ items, source: "hardware" });
+  }, [scannedItems, currentInput, onScanComplete]);
+
+  const canGenerate = scannedItems.length > 0 || (!justCommitted.current && currentInput.trim().length > 0);
   const hasText = currentInput.trim().length > 0;
 
   return (
@@ -346,7 +358,7 @@ const s = StyleSheet.create({
   scanTargetBox: {
     backgroundColor: C.surface,
     borderRadius: 16,
-    borderWidth: 1.5,
+    // borderWidth: 1.5,
     borderColor: C.border,
     minHeight: 170,
     alignItems: "center",
