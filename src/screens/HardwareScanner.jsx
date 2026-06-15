@@ -126,12 +126,17 @@ export default function HardwareScanner({
     <View style={s.hwWrap}>
       <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
         {/* Header/Navbar */}
-        <ScannerHeader 
-          session={session} 
+        <ScannerHeader
+          session={session}
           onEditPress={() => setEditModalVisible(true)}
           isCameraMode={false}
         />
-        
+
+        {/* Mode Toggle */}
+        {/* <View style={{ marginBottom: 20 }}>
+          <ModeToggle mode="hardware" onChangeMode={handleSwitchMode} />
+        </View> */}
+
         <ScrollView
           contentContainerStyle={s.hwScroll}
           bounces={false}
@@ -263,7 +268,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 12,
-    paddingVertical: 1.5,
+    paddingVertical: 4,
     backgroundColor: C.accentDim,
   },
   sessionCardTitle: {
@@ -278,8 +283,8 @@ const s = StyleSheet.create({
     gap: 6,
     backgroundColor: C.surface,
     borderRadius: 16,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderWidth: 1,
     borderColor: C.accentBorder,
   },

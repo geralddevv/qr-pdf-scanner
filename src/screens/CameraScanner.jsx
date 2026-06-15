@@ -143,6 +143,11 @@ export default function CameraScanner({
           </TouchableOpacity>
         </SafeAreaView>
 
+        {/* Top dimmed area to push viewfinder down to the center */}
+        <View style={s.dimTop}>
+          <ModeToggle mode="camera" onChangeMode={onSwitchMode} />
+        </View>
+
         {/* Viewfinder */}
         <View style={s.camMid}>
           <View style={s.dimSide} />
@@ -262,7 +267,13 @@ const s = StyleSheet.create({
   overlay: { 
     flex: 1,
     flexDirection: "column",
-    justifyContent: "space-between",
+  },
+  dimTop: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.55)",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingBottom: 16,
   },
   camMid: { flexDirection: "row", height: SCAN_BOX },
   dimSide: { flex: 1, backgroundColor: "rgba(255,255,255,0.55)" },
@@ -279,7 +290,7 @@ const s = StyleSheet.create({
   cBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
   cBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
   camBottom: {
-    flex: 1.2,
+    flex: 1,
     backgroundColor: "rgba(255,255,255,0.55)",
     alignItems: "center",
     paddingTop: 28,

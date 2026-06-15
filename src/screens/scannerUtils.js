@@ -651,7 +651,7 @@ export const sh = StyleSheet.create({
     borderBottomWidth: 0,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    marginBottom: 16,
+    marginBottom: 20,
     shadowColor: C.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -662,6 +662,7 @@ export const sh = StyleSheet.create({
     backgroundColor: C.accent,
     borderBottomColor: C.accent,
     shadowOpacity: 0.25,
+    marginBottom: 0,
   },
   headerContent: {
     flexDirection: "row",

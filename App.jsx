@@ -6,7 +6,7 @@ import SessionScreen from "./src/screens/SessionScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import ResultScreen from "./src/screens/ResultScreen";
 
-const STATUS_BAR_BG = "#f0f4ff";
+const STATUS_BAR_BG = "#2563eb";
 
 export default function App() {
   // Session data entered on the first screen
@@ -15,7 +15,7 @@ export default function App() {
   const [scanResult, setScanResult] = useState(null);
   // Persisted scanner state — survives the trip to ResultScreen and back
   const [persistedItems, setPersistedItems] = useState([]);
-  const [persistedMode, setPersistedMode]   = useState("camera");
+  const [persistedMode, setPersistedMode] = useState("camera");
 
   const handleSessionStart = (sessionData) => {
     setSession(sessionData);

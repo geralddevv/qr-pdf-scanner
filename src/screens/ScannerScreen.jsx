@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-// import CameraScanner from "./CameraScanner";
+import CameraScanner from "./CameraScanner";
 import HardwareScanner from "./HardwareScanner";
 
 // ─── Root Scanner Router ───────────────────────────────────────────────────────
@@ -30,6 +30,6 @@ export default function ScannerScreen({
       session={session}
       onChangeSession={onChangeSession}
     />
-    // )
-  );
+  )
+  // );
 }

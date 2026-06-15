@@ -20,35 +20,35 @@ import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const C = {
-  bg:           "#f0f4ff",
-  surface:      "#ffffff",
-  elevated:     "#e8edf8",
-  border:       "#d1d9f0",
-  muted:        "#8e9bbf",
-  subtle:       "#6b7a9e",
-  body:         "#3d4a6b",
-  strong:       "#1e2a4a",
-  heading:      "#0f1829",
-  accent:       "#2563eb",
-  accentLight:  "#3b82f6",
-  accentDim:    "rgba(37,99,235,0.08)",
+  bg: "#f0f4ff",
+  surface: "#ffffff",
+  elevated: "#e8edf8",
+  border: "#d1d9f0",
+  muted: "#8e9bbf",
+  subtle: "#6b7a9e",
+  body: "#3d4a6b",
+  strong: "#1e2a4a",
+  heading: "#0f1829",
+  accent: "#2563eb",
+  accentLight: "#3b82f6",
+  accentDim: "rgba(37,99,235,0.08)",
   accentBorder: "rgba(37,99,235,0.22)",
-  accentText:   "#1d4ed8",
-  success:      "#16a34a",
-  successDim:   "rgba(22,163,74,0.08)",
-  successBorder:"rgba(22,163,74,0.22)",
-  error:        "#dc2626",
-  errorDim:     "rgba(220,38,38,0.08)",
-  errorBorder:  "rgba(220,38,38,0.25)",
+  accentText: "#1d4ed8",
+  success: "#16a34a",
+  successDim: "rgba(22,163,74,0.08)",
+  successBorder: "rgba(22,163,74,0.22)",
+  error: "#dc2626",
+  errorDim: "rgba(220,38,38,0.08)",
+  errorBorder: "rgba(220,38,38,0.25)",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function detectType(raw) {
-  if (/^https?:\/\//i.test(raw))              return "URL";
-  if (/^mailto:/i.test(raw))                  return "Email";
-  if (/^tel:/i.test(raw))                     return "Phone";
+  if (/^https?:\/\//i.test(raw)) return "URL";
+  if (/^mailto:/i.test(raw)) return "Email";
+  if (/^tel:/i.test(raw)) return "Phone";
   if (/^(BEGIN:VCARD|BEGIN:VCAL)/i.test(raw)) return "Contact / Calendar";
-  if (/^WIFI:/i.test(raw))                    return "Wi-Fi";
+  if (/^WIFI:/i.test(raw)) return "Wi-Fi";
   return "Text";
 }
 
@@ -66,146 +66,177 @@ function escapeHtml(raw) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function itemBlock(item, index, total, session) {
-  const escaped = escapeHtml(item.raw);
-  const type    = detectType(item.raw);
-  const isUrl   = type === "URL";
-
-  return `
-  <div class="item-card">
-    <div class="item-header">
-      <div class="item-badge">${type}</div>
-      <div class="item-num">#${index + 1}</div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Scanned Content</div>
-      <div class="card-value mono">${isUrl ? `<a class="url-link" href="${escaped}">${escaped}</a>` : escaped}</div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Content Type</div>
-      <div class="card-value">${type}</div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Scanned At</div>
-      <div class="card-value">${formatDate(item.scannedAt)}</div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Character Count</div>
-      <div class="card-value">${item.raw.length} characters</div>
-    </div>
-  </div>`;
-}
-
-function pageBlock(itemPair, pageIndex, totalPages, session) {
-  const [item1, item2] = itemPair;
-  const pageBreak = pageIndex < totalPages - 1 ? "page-break-after:always;" : "";
-  const sessionRow = session
-    ? `<div class="session-strip"><span class="session-field"><span class="session-key">User</span> ${escapeHtml(session.username)}</span><span class="session-divider"> | </span><span class="session-field"><span class="session-key">Location</span> ${escapeHtml(session.location)}</span><span class="session-divider"> | </span><span class="session-field"><span class="session-key">Lot/Inv/Batch</span> ${escapeHtml(session.reference)}</span></div>`
-    : "";
-
-  const item2Block = item2 ? itemBlock(item2, item2.originalIndex, item2.originalTotal, null) : "";
-
-  return `
-  <div style="${pageBreak}padding:40px 48px;min-height:100vh;box-sizing:border-box;">
-    <div class="page-header">
-      <div class="logo">QR</div>
-      <div>
-        <div class="page-title">QR Scan Report</div>
-        <div class="page-sub">Page ${pageIndex + 1} of ${totalPages}</div>
-      </div>
-    </div>
-
-    ${sessionRow}
-
-    <div class="items-grid">
-      ${itemBlock(item1, item1.originalIndex, item1.originalTotal, null)}
-      ${item2Block}
-    </div>
-  </div>`;
-}
-
 function buildMultiPageHtml(items, source, session) {
   const total = items.length;
-  
-  // Add original indices and total to each item for display
-  const itemsWithMeta = items.map((item, i) => ({
-    ...item,
-    originalIndex: i,
-    originalTotal: total,
-  }));
 
-  // Group items into pairs
-  const pages = [];
-  for (let i = 0; i < itemsWithMeta.length; i += 2) {
-    pages.push([itemsWithMeta[i], itemsWithMeta[i + 1]]);
-  }
+  // Build session table (Table 1)
+  const sessionTableHtml = session ? `
+    <table class="session-table">
+      <thead>
+        <tr>
+          <th>Username / Operator</th>
+          <th>Location</th>
+          <th>Lot / Invoice / Batch No.</th>
+          <th>Generated</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${escapeHtml(session.username)}</td>
+          <td>${escapeHtml(session.location)}</td>
+          <td>${escapeHtml(session.reference)}</td>
+          <td>${formatDate(new Date().toISOString())}</td>
+        </tr>
+      </tbody>
+    </table>
+  ` : `
+    <table class="session-table">
+      <thead>
+        <tr>
+          <th>Generated</th>
+          <th>Source</th>
+          <th>Total Items</th>
+          <th colspan="1"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${formatDate(new Date().toISOString())}</td>
+          <td>${source}</td>
+          <td>${total}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  `;
 
-  const totalPages = pages.length;
-  const pagesHtml = pages.map((pair, i) => pageBlock(pair, i, totalPages, session)).join("\n");
+  // Build individual item tables
+  const itemTablesHtml = items.map((item, i) => {
+    const type = detectType(item.raw);
+    const displayValue = item.raw;
+    return `
+      <div class="table-wrapper">
+        <div class="table-label">Scanned Item #${i + 1}</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Content</th>
+              <th>Date</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="type">${type}</td>
+              <td class="content">${escapeHtml(displayValue)}</td>
+              <td class="date">${new Date(item.scannedAt).toLocaleDateString()}</td>
+              <td class="time">${new Date(item.scannedAt).toLocaleTimeString()}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('\n');
 
-  const sessionFooter = session
-    ? ` • ${escapeHtml(session.username)} • ${escapeHtml(session.location)} • ${escapeHtml(session.reference)}`
-    : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>QR Scan Report — ${total} code${total > 1 ? "s" : ""}</title>
+<meta name="viewport" content="width=800, shrink-to-fit=yes"/>
+<title>QR Scan Report</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
-       background:#f0f4ff;color:#1e2a4a;}
-  .page-header{display:flex;align-items:center;gap:14px;padding-bottom:22px;
-               border-bottom:2px solid #d1d9f0;margin-bottom:28px;}
-  .logo{width:44px;height:44px;background:#2563eb;border-radius:10px;
-        display:flex;align-items:center;justify-content:center;
-        font-size:16px;font-weight:800;color:#fff;flex-shrink:0;
-        line-height:44px;text-align:center;}
-  .page-title{font-size:20px;font-weight:800;color:#0f1829;}
-  .page-sub{font-size:12px;color:#6b7a9e;margin-top:2px;}
-  .session-strip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-                 background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.18);
-                 border-radius:8px;padding:8px 14px;margin-bottom:18px;font-size:12px;color:#3d4a6b;}
-  .session-field{display:flex;align-items:center;gap:4px;}
-  .session-key{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#8e9bbf;}
-  .session-divider{color:#b0b8d0;font-size:13px;}
-  .items-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;}
-  .item-card{display:flex;flex-direction:column;gap:14px;}
-  .item-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
-  .item-badge{display:inline-block;background:rgba(37,99,235,0.10);color:#1d4ed8;
-         font-size:11px;font-weight:700;letter-spacing:.5px;
-         padding:3px 10px;border-radius:20px;text-transform:uppercase;
-         border:1px solid rgba(37,99,235,0.22);}
-  .item-num{margin-left:auto;background:rgba(37,99,235,0.10);color:#1d4ed8;
-            font-size:12px;font-weight:700;padding:4px 10px;
-            border-radius:16px;border:1px solid rgba(37,99,235,0.22);}
-  .card{background:#fff;border-radius:12px;border:1px solid #d1d9f0;
-        padding:16px 18px;
-        box-shadow:0 1px 4px rgba(37,99,235,0.06);}
-  .card-title{font-size:10px;font-weight:700;letter-spacing:1px;
-              text-transform:uppercase;color:#8e9bbf;margin-bottom:6px;}
-  .card-value{font-size:13px;color:#0f1829;word-break:break-all;line-height:1.5;}
-  .card-value.mono{font-family:'Courier New',Courier,monospace;background:#f0f4ff;
-                   padding:8px 10px;border-radius:6px;font-size:11px;color:#3d4a6b;}
-  .url-link{color:#2563eb;text-decoration:underline;}
-  .footer-strip{background:#e8edf8;border-top:1px solid #d1d9f0;
-                padding:14px 48px;text-align:center;font-size:11px;color:#8e9bbf;
-                position:fixed;bottom:0;left:0;right:0;}
-  @media(max-width:800px){
-    .items-grid{grid-template-columns:1fr;}
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  @page {
+    size: A4;
+    margin: 20mm;
+  }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #fff;
+    color: #000;
+    padding: 40px;
+    width: 210mm;
+    height: 297mm;
+    margin: 0 auto;
+  }
+  .table-wrapper {
+    margin-bottom: 20px;
+    page-break-inside: avoid;
+  }
+  .table-label {
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #555;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  thead {
+    background-color: #f5f5f5;
+  }
+  th {
+    border: 1px solid #000;
+    padding: 8px;
+    text-align: left;
+    font-weight: bold;
+    font-size: 10px;
+    text-transform: uppercase;
+    background-color: #e8e8e8;
+  }
+  td {
+    border: 1px solid #000;
+    padding: 8px;
+  }
+  tr:nth-child(even) {
+    background-color: #f9f9f9;
+  }
+  .type {
+    text-align: center;
+    width: 15%;
+    font-weight: 600;
+  }
+  .content {
+    width: 50%;
+    word-break: break-word;
+    font-family: monospace;
+    font-size: 10px;
+  }
+  .date {
+    width: 17.5%;
+    text-align: center;
+  }
+  .time {
+    width: 17.5%;
+    text-align: center;
+  }
+  .session-table {
+    width: 100%;
+  }
+  @media print {
+    body {
+      padding: 20px;
+    }
   }
 </style>
 </head>
 <body>
-${pagesHtml}
-<div class="footer-strip">
-  QR PDF Scanner &nbsp;•&nbsp; ${total} QR code${total > 1 ? "s" : ""} &nbsp;•&nbsp; ${totalPages} page${totalPages > 1 ? "s" : ""} &nbsp;•&nbsp; ${formatDate(new Date().toISOString())} &nbsp;•&nbsp; Source: ${source}${sessionFooter}
-</div>
+  <div class="table-wrapper">
+    <div class="table-label">Login Information</div>
+    ${sessionTableHtml}
+  </div>
+
+  ${itemTablesHtml}
+
 </body>
 </html>`;
 }
@@ -214,11 +245,11 @@ ${pagesHtml}
 function ScanSummaryRow({ item, index }) {
   const type = detectType(item.raw);
   const typeIcon =
-    type === "URL"     ? "globe-outline"         :
-    type === "Email"   ? "mail-outline"           :
-    type === "Phone"   ? "call-outline"           :
-    type === "Wi-Fi"   ? "wifi-outline"           :
-                         "document-text-outline";
+    type === "URL" ? "globe-outline" :
+      type === "Email" ? "mail-outline" :
+        type === "Phone" ? "call-outline" :
+          type === "Wi-Fi" ? "wifi-outline" :
+            "document-text-outline";
   return (
     <View style={sr.row}>
       <View style={sr.indexCircle}>
@@ -458,6 +489,9 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
             originWhitelist={["*"]}
             source={{ html: buildMultiPageHtml(items, source, session) }}
             startInLoadingState
+            scalesPageToFit={true}
+            builtInZoomControls={true}
+            displayZoomControls={false}
             renderLoading={() => (
               <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
                 <ActivityIndicator size="large" color="#2563eb" />
