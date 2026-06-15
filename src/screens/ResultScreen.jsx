@@ -158,7 +158,7 @@ function buildMultiPageHtml(items, source, session) {
     <table class="session-table">
       <thead>
         <tr>
-          <th>Username</th>
+          <th>Username / Operator</th>
           <th>Location</th>
           <th>Lot / Invoice / Batch No.</th>
           <th>Generated</th>
@@ -246,8 +246,9 @@ function buildMultiPageHtml(items, source, session) {
   });
 
   // Page 1: login info + first 2 items
+  const page1IsSingle = itemBlocks.length === 1;
   const page1 = `
-    <div class="page">
+    <div class="page${page1IsSingle ? ' page-single' : ''}">
       <div class="section-label">LOGIN INFORMATION</div>
       ${sessionTableHtml}
       ${itemBlocks.slice(0, 2).join('')}
@@ -258,8 +259,9 @@ function buildMultiPageHtml(items, source, session) {
   const remaining = itemBlocks.slice(2);
   let extraPages = '';
   for (let i = 0; i < remaining.length; i += 2) {
+    const isSingle = !remaining[i + 1];
     extraPages += `
-      <div class="page">
+      <div class="page${isSingle ? ' page-single' : ''}">
         ${remaining[i]}
         ${remaining[i + 1] || ''}
       </div>
@@ -295,6 +297,12 @@ function buildMultiPageHtml(items, source, session) {
     flex-direction: column;
     justify-content: center;
     padding: 8mm 0;
+  }
+
+  /* Pages with only one item align to top with a consistent top margin */
+  .page-single {
+    justify-content: flex-start;
+    padding-top: 30mm;
   }
 
   /* Don't add a trailing blank page after the last one */
@@ -583,14 +591,14 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
           {status === "done" && (
             <>
               <View style={s.rowBtns}>
-                <TouchableOpacity style={[s.secondaryBtn, s.rowBtn]} onPress={previewPdf} activeOpacity={0.8}>
-                  <Ionicons name="eye-outline" size={16} color={C.subtle} />
-                  <Text style={s.secondaryBtnText}>Preview</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={[s.secondaryBtn, s.rowBtn]} onPress={onReset} activeOpacity={0.8}>
                   <Ionicons name="camera-outline" size={16} color={C.subtle} />
                   <Text style={s.secondaryBtnText}>Scan More</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={[s.secondaryBtn, s.rowBtn]} onPress={previewPdf} activeOpacity={0.8}>
+                  <Ionicons name="eye-outline" size={16} color={C.subtle} />
+                  <Text style={s.secondaryBtnText}>Preview</Text>
+                </TouchableOpacity>                
               </View>
               <TouchableOpacity style={s.primaryBtn} onPress={sharePdf} activeOpacity={0.85}>
                 <Ionicons name="share-outline" size={18} color="#fff" />
