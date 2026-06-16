@@ -26,11 +26,11 @@ export const C = {
   body:         "#3d4a6b",       // readable body
   strong:       "#1e2a4a",       // strong text
   heading:      "#0f1829",       // near-black headings
-  accent:       "#2563eb",       // vivid blue
-  accentLight:  "#3b82f6",       // lighter blue for hover/icons
-  accentDim:    "rgba(37,99,235,0.08)",
-  accentBorder: "rgba(37,99,235,0.22)",
-  accentText:   "#1d4ed8",       // slightly darker for text on white
+  accent:       "#002d8f",
+  accentLight:  "#1a4fbf",
+  accentDim:    "rgba(0,45,143,0.08)",
+  accentBorder: "rgba(0,45,143,0.22)",
+  accentText:   "#002070",
   success:      "#16a34a",
   successDim:   "rgba(22,163,74,0.08)",
   error:        "#dc2626",
@@ -479,7 +479,7 @@ export const strip = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: C.border,
     paddingBottom: 8,
-    shadowColor: "#2563eb",
+    shadowColor: "#002d8f",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,

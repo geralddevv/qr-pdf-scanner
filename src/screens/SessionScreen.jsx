@@ -23,11 +23,11 @@ const C = {
   body:         "#3d4a6b",
   strong:       "#1e2a4a",
   heading:      "#0f1829",
-  accent:       "#2563eb",
-  accentLight:  "#3b82f6",
-  accentDim:    "rgba(37,99,235,0.08)",
-  accentBorder: "rgba(37,99,235,0.22)",
-  accentText:   "#1d4ed8",
+  accent:       "#002d8f",
+  accentLight:  "#1a4fbf",
+  accentDim:    "rgba(0,45,143,0.08)",
+  accentBorder: "rgba(0,45,143,0.22)",
+  accentText:   "#002070",
   success:      "#16a34a",
   successDim:   "rgba(22,163,74,0.08)",
   error:        "#dc2626",
@@ -141,8 +141,6 @@ export default function SessionScreen({ onSessionStart }) {
     });
   };
 
-  const filledCount = [username, location, reference].filter(v => v.trim()).length;
-
   return (
     <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView
@@ -169,20 +167,6 @@ export default function SessionScreen({ onSessionStart }) {
                 </View>
                 <Text style={s.appSub}>Enter your Login details to begin scanning</Text>
               </View>
-          </View>
-
-          {/* ── Progress dots ── */}
-          <View style={s.progressRow}>
-            {[0, 1, 2].map(i => (
-              <View
-                key={i}
-                style={[
-                  s.progressDot,
-                  i < filledCount ? s.progressDotFilled : null,
-                  i === filledCount && filledCount < 3 ? s.progressDotActive : null,
-                ]}
-              />
-            ))}
           </View>
 
           {/* ── Form card ── */}
@@ -299,28 +283,6 @@ const s = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Progress indicator
-  progressRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 24,
-  },
-  progressDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: C.border,
-  },
-  progressDotActive: {
-    width: 24,
-    backgroundColor: C.accentBorder,
-  },
-  progressDotFilled: {
-    backgroundColor: C.accent,
-  },
-
   // Card
   card: {
     backgroundColor: C.surface,
@@ -329,7 +291,7 @@ const s = StyleSheet.create({
     borderColor: C.border,
     padding: 20,
     marginBottom: 24,
-    shadowColor: "#2563eb",
+    shadowColor: "#002d8f",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 12,

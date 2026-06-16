@@ -8,6 +8,7 @@ import {
   ScrollView,
   AppState,
   Platform,
+  Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -29,17 +30,29 @@ export default function HardwareScanner({
   const [displayText, setDisplayText] = useState("");
   const [scannedItems, setScannedItems] = useState(initialItems);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  // The hidden scanner input is unmounted while the app is backgrounded so
+  // Android has no focused EditText to restore (and pop the keyboard for) on resume.
+  const [inputMounted, setInputMounted] = useState(true);
+  // Drives the accent focus-ring overlay — true only while the input holds focus.
+  const [isFocused, setIsFocused] = useState(false);
 
   const inputRef = useRef(null);
   const appStateRef = useRef(AppState.currentState);
   const isMountedRef = useRef(true);
+  // While true, silentFocus is a no-op. Used to stop the input from grabbing
+  // focus (and popping the keyboard) while backgrounded / during resume.
+  const suppressFocusRef = useRef(false);
   // Uncontrolled: we track the current value ourselves via ref, not React state
   const currentValueRef = useRef("");
 
   // ── focus without showing soft keyboard ───────────────────────────────────
   const silentFocus = useCallback(() => {
     setTimeout(() => {
-      if (isMountedRef.current) {
+      if (
+        isMountedRef.current &&
+        !suppressFocusRef.current &&
+        AppState.currentState === "active"
+      ) {
         inputRef.current?.focus();
       }
     }, 100);
@@ -49,10 +62,42 @@ export default function HardwareScanner({
     isMountedRef.current = true;
     silentFocus();
     const sub = AppState.addEventListener("change", (next) => {
-      if (appStateRef.current.match(/inactive|background/) && next === "active") {
-        silentFocus();
-      }
+      const prev = appStateRef.current;
       appStateRef.current = next;
+
+      if (next.match(/inactive|background/)) {
+        // Leaving the app: suppress refocus, unmount the input and blur/dismiss
+        // so there's no focused EditText for Android to restore the keyboard for.
+        suppressFocusRef.current = true;
+        setInputMounted(false);
+        setIsFocused(false);
+        inputRef.current?.blur();
+        Keyboard.dismiss();
+      } else if (prev.match(/inactive|background/) && next === "active") {
+        // Returning: keep the input unmounted and focus suppressed while Android
+        // does its (sometimes delayed) keyboard restore, dismissing repeatedly to
+        // beat it. Only then remount the input and silently refocus it.
+        suppressFocusRef.current = true;
+        setInputMounted(false);
+        setIsFocused(false);
+        [0, 80, 200, 400, 650].forEach((t) => {
+          setTimeout(() => {
+            if (isMountedRef.current) Keyboard.dismiss();
+          }, t);
+        });
+        setTimeout(() => {
+          if (!isMountedRef.current || AppState.currentState !== "active") return;
+          suppressFocusRef.current = false;
+          setInputMounted(true);
+          // Focus shortly after the input has remounted.
+          setTimeout(() => {
+            if (isMountedRef.current && AppState.currentState === "active") {
+              inputRef.current?.focus();
+              Keyboard.dismiss();
+            }
+          }, 120);
+        }, 750);
+      }
     });
     return () => {
       isMountedRef.current = false;
@@ -155,6 +200,11 @@ export default function HardwareScanner({
             <Text style={s.inputLabel}>SCAN TARGET</Text>
 
             <View style={s.scanRingOuter}>
+
+              {/* Focus-ring overlay — the RN equivalent of a ::before border.
+                  Sits outside the input box with a gap, only while focused. */}
+              {isFocused && <View style={s.focusRing} pointerEvents="none" />}
+
               <View style={[s.scanTargetBox, hasText && s.scanTargetBoxFilled]}>
 
                 {/*
@@ -163,22 +213,25 @@ export default function HardwareScanner({
                   onSubmitEditing fires on \n — that is our commit signal.
                   showSoftInputOnFocus + visible-password suppress the soft keyboard.
                 */}
-                <TextInput
-                  ref={inputRef}
-                  style={s.hiddenInput}
-                  defaultValue=""
-                  onChangeText={handleTextChange}
-                  onSubmitEditing={commitScan}
-                  multiline={false}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  spellCheck={false}
-                  showSoftInputOnFocus={false}
-                  keyboardType={Platform.OS === "android" ? "visible-password" : "default"}
-                  caretHidden={true}
-                  onBlur={silentFocus}
-                  returnKeyType="done"
-                />
+                {inputMounted && (
+                  <TextInput
+                    ref={inputRef}
+                    style={s.hiddenInput}
+                    defaultValue=""
+                    onChangeText={handleTextChange}
+                    onSubmitEditing={commitScan}
+                    multiline={false}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    spellCheck={false}
+                    showSoftInputOnFocus={false}
+                    keyboardType={Platform.OS === "android" ? "visible-password" : "default"}
+                    caretHidden={true}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => { setIsFocused(false); silentFocus(); }}
+                    returnKeyType="done"
+                  />
+                )}
 
                 {hasText ? (
                   <Text style={s.scanTargetValue} numberOfLines={4}>
@@ -296,31 +349,36 @@ const s = StyleSheet.create({
   },
 
   scanRingOuter: {
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: C.accent,
-    padding: 1,
     marginBottom: 12,
-    shadowColor: C.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 3,
+    padding: 6,
+    borderRadius: 20,
   },
 
   scanTargetBox: {
     backgroundColor: C.surface,
     borderRadius: 16,
+    borderWidth: 1,
     borderColor: C.border,
-    minHeight: 170,
+    minHeight: 210,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
     overflow: "hidden",
   },
   scanTargetBoxFilled: {
-    borderColor: C.accent,
     backgroundColor: "#f5f8ff",
+  },
+  // Accent focus ring drawn on top of the box's minimal border when focused.
+  focusRing: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 20,
+    borderWidth: 3,
+    borderColor: C.accent,
+    zIndex: 5,
   },
 
   hiddenInput: {
@@ -351,9 +409,9 @@ const s = StyleSheet.create({
 
   scanTargetValue: {
     color: C.heading,
-    fontSize: 15,
+    fontSize: 12,
     fontFamily: Platform.OS === "ios" ? "Courier New" : "monospace",
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: 18,
   },
 });

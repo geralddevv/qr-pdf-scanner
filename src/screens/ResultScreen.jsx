@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
+import * as Print from "expo-print";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -30,11 +31,11 @@ const C = {
   body: "#3d4a6b",
   strong: "#1e2a4a",
   heading: "#0f1829",
-  accent: "#2563eb",
-  accentLight: "#3b82f6",
-  accentDim: "rgba(37,99,235,0.08)",
-  accentBorder: "rgba(37,99,235,0.22)",
-  accentText: "#1d4ed8",
+  accent: "#002d8f",
+  accentLight: "#1a4fbf",
+  accentDim: "rgba(0,45,143,0.08)",
+  accentBorder: "rgba(0,45,143,0.22)",
+  accentText: "#002070",
   success: "#16a34a",
   successDim: "rgba(22,163,74,0.08)",
   successBorder: "rgba(22,163,74,0.22)",
@@ -60,14 +61,14 @@ function detectType(raw) {
 // ─── Pharmaceutical Data Parser ────────────────────────────────────────────────
 function parsePharmaData(raw) {
   const pairs = [];
-  
+
   try {
     // More flexible regex to match keys with letters, numbers, spaces, periods, hyphens, parentheses, etc.
     // Matches: "key:", "Key Name:", "BATCH NO.:", "Date of Mfg:", etc.
     const keyRegex = /([A-Za-z0-9\s\-\/\.\(\)&]+?):\s*/g;
     let match;
     const keys = [];
-    
+
     // Find all keys and their positions
     while ((match = keyRegex.exec(raw)) !== null) {
       const keyText = match[1].trim();
@@ -80,29 +81,29 @@ function parsePharmaData(raw) {
         });
       }
     }
-    
+
     // If no structured data found, return null
     if (keys.length === 0) {
       return null;
     }
-    
+
     // Extract values for each key
     for (let i = 0; i < keys.length; i++) {
       const currentKey = keys[i];
       const nextKeyIndex = i + 1 < keys.length ? keys[i + 1].startIndex : raw.length;
-      
+
       // Get value from end of key to start of next key
       let value = raw.substring(currentKey.endIndex, nextKeyIndex).trim();
-      
+
       // Remove trailing comma, period, or whitespace
       value = value.replace(/[\s,.\s]+$/, '').trim();
-      
+
       // Only add pairs where both key and value exist and value isn't empty
       if (currentKey.key && value && value.length > 0) {
         pairs.push({ key: currentKey.key, value });
       }
     }
-    
+
     return pairs.length > 0 ? pairs : null;
   } catch (error) {
     // If parsing fails, return null to fall back to text display
@@ -150,7 +151,7 @@ function escapeHtml(raw) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function buildMultiPageHtml(items, source, session) {
+function buildMultiPageHtml(items, source, session, isPreview = false) {
   const total = items.length;
 
   // ── helpers ──────────────────────────────────────────────────────────────
@@ -284,17 +285,18 @@ function buildMultiPageHtml(items, source, session) {
     font-size: 11px;
     color: #000;
     background: #fff;
+    ${isPreview ? 'padding: 20px 100px;' : ''}
   }
 
   /* Each .page fills one A4 sheet and forces a break after it */
   .page {
     width: 100%;
-    min-height: 267mm;
+    min-height: ${isPreview ? 'auto' : '267mm'};
     page-break-after: always;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    padding: 8mm 0;
+    justify-content: flex-start;
+    padding: ${isPreview ? '10px 0' : '20mm 0'};
   }
 
   /* Don't add a trailing blank page after the last one */
@@ -451,7 +453,7 @@ const sl = StyleSheet.create({
   track: {
     width: 3,
     borderRadius: 2,
-    backgroundColor: "rgba(37,99,235,0.12)",
+    backgroundColor: "rgba(0,45,143,0.12)",
     marginLeft: 6,
     overflow: "hidden",
   },
@@ -469,10 +471,19 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   const [pdfUri, setPdfUri] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const tickScale = useRef(new Animated.Value(1)).current;
+  // Mirror showPreview into a ref so the back handler always sees the latest
+  // value without needing to re-subscribe on every toggle.
+  const showPreviewRef = useRef(showPreview);
+  useEffect(() => { showPreviewRef.current = showPreview; }, [showPreview]);
 
   // ── Handle Android back button ──────────────────────────────────────────
   useEffect(() => {
     const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
+      // If the preview modal is open, back should close it, not the screen.
+      if (showPreviewRef.current) {
+        setShowPreview(false);
+        return true;
+      }
       onReset();
       return true; // Indicate we've handled the back button
     });
@@ -483,10 +494,6 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   const generatePdf = useCallback(async () => {
     setStatus("generating");
     try {
-      let Print;
-      try { Print = await import("expo-print"); }
-      catch { throw new Error("expo-print is not installed. Run: npx expo install expo-print"); }
-
       const html = buildMultiPageHtml(items, source, session);
       // Let expo-print write to its own temp location — don't move it,
       // moving across directories on Android can fail
@@ -506,12 +513,17 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
 
   const sharePdf = useCallback(async () => {
     if (!pdfUri) return;
-    const canShare = await Sharing.isAvailableAsync();
-    if (!canShare) {
-      Alert.alert("Sharing unavailable", "This device does not support file sharing.");
-      return;
+    try {
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        Alert.alert("Sharing unavailable", "This device does not support file sharing.");
+        return;
+      }
+      await Sharing.shareAsync(pdfUri, { mimeType: "application/pdf" });
+    } catch (err) {
+      // Treat a user-dismissed share sheet as a no-op; surface real failures.
+      console.warn("Share failed:", err);
     }
-    await Sharing.shareAsync(pdfUri, { mimeType: "application/pdf" });
   }, [pdfUri]);
 
   const isSingle = items.length === 1;
@@ -532,7 +544,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
               ? <Ionicons name="camera-outline" size={12} color={C.subtle} />
               : <MaterialCommunityIcons name="barcode-scan" size={12} color={C.subtle} />
             }
-            <Text style={s.sourceBadgeText}>{source === "camera" ? "Camera" : "Hardware"}</Text>
+            {/* <Text style={s.sourceBadgeText}>{source === "camera" ? "Camera" : "Hardware"}</Text> */}
           </View>
         </View>
 
@@ -583,19 +595,19 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
           {status === "done" && (
             <>
               <View style={s.rowBtns}>
-                <TouchableOpacity style={[s.secondaryBtn, s.rowBtn]} onPress={previewPdf} activeOpacity={0.8}>
-                  <Ionicons name="eye-outline" size={16} color={C.subtle} />
-                  <Text style={s.secondaryBtnText}>Preview</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={[s.secondaryBtn, s.rowBtn]} onPress={onReset} activeOpacity={0.8}>
                   <Ionicons name="camera-outline" size={16} color={C.subtle} />
                   <Text style={s.secondaryBtnText}>Scan More</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.secondaryBtn, s.rowBtn]} onPress={previewPdf} activeOpacity={0.8}>
+                  <Ionicons name="eye-outline" size={16} color={C.subtle} />
+                  <Text style={s.secondaryBtnText}>Preview</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity style={s.primaryBtn} onPress={sharePdf} activeOpacity={0.85}>
                 <Ionicons name="share-outline" size={18} color="#fff" />
                 <Text style={s.primaryBtnText}>Share PDF</Text>
-              </TouchableOpacity>              
+              </TouchableOpacity>
             </>
           )}
 
@@ -634,23 +646,25 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
             </TouchableOpacity>
             <Text style={s.previewTitle}>PDF Preview</Text>
             <TouchableOpacity onPress={sharePdf} activeOpacity={0.8} style={s.previewShare}>
-              <Ionicons name="share-outline" size={20} color="#2563eb" />
+              <Ionicons name="share-outline" size={20} color="#002d8f" />
             </TouchableOpacity>
           </View>
-          <WebView
-            style={{ flex: 1 }}
-            originWhitelist={["*"]}
-            source={{ html: buildMultiPageHtml(items, source, session) }}
-            startInLoadingState
-            scalesPageToFit={true}
-            builtInZoomControls={true}
-            displayZoomControls={false}
-            renderLoading={() => (
-              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-                <ActivityIndicator size="large" color="#2563eb" />
-              </View>
-            )}
-          />
+          {showPreview && (
+            <WebView
+              style={{ flex: 1 }}
+              originWhitelist={["*"]}
+              source={{ html: buildMultiPageHtml(items, source, session, true) }}
+              startInLoadingState
+              scalesPageToFit={true}
+              builtInZoomControls={true}
+              displayZoomControls={false}
+              renderLoading={() => (
+                <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+                  <ActivityIndicator size="large" color="#002d8f" />
+                </View>
+              )}
+            />
+          )}
         </SafeAreaView>
       </Modal>
     </SafeAreaView>
@@ -743,7 +757,7 @@ const s = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: C.border,
-    shadowColor: "#2563eb",
+    shadowColor: "#002d8f",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 4,
@@ -799,7 +813,7 @@ const s = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: C.border,
-    shadowColor: "#2563eb",
+    shadowColor: "#002d8f",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,

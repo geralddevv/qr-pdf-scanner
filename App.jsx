@@ -6,7 +6,7 @@ import SessionScreen from "./src/screens/SessionScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import ResultScreen from "./src/screens/ResultScreen";
 
-const STATUS_BAR_BG = "#2563eb";
+const STATUS_BAR_BG = "#002d8f";
 
 export default function App() {
   // Session data entered on the first screen
@@ -76,7 +76,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       {/* White status bar background that works on both iOS and Android */}
-      <StatusBar style="dark" backgroundColor={STATUS_BAR_BG} translucent={false} />
+      <StatusBar style="light" backgroundColor={STATUS_BAR_BG} translucent={false} />
       {Platform.OS === "ios" && (
         <SafeAreaView edges={["top"]} style={styles.statusBarFill} />
       )}
