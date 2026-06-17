@@ -195,8 +195,8 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
     </table>
   `;
 
-  // Build one HTML block per scanned item
-  const itemBlocks = items.map((item, i) => {
+  // Build one HTML block per scanned item — no manual pagination
+  const itemBlocksHtml = items.map((item, i) => {
     const type = detectType(item.raw);
     const parsedData = type === "Pharma Data" ? parsePharmaData(item.raw) : null;
 
@@ -244,28 +244,7 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
         </div>
       `;
     }
-  });
-
-  // Page 1: login info + first 2 items
-  const page1 = `
-    <div class="page">
-      <div class="section-label">LOGIN INFORMATION</div>
-      ${sessionTableHtml}
-      ${itemBlocks.slice(0, 2).join('')}
-    </div>
-  `;
-
-  // Page 2+: remaining items, 2 per page
-  const remaining = itemBlocks.slice(2);
-  let extraPages = '';
-  for (let i = 0; i < remaining.length; i += 2) {
-    extraPages += `
-      <div class="page">
-        ${remaining[i]}
-        ${remaining[i + 1] || ''}
-      </div>
-    `;
-  }
+  }).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -288,22 +267,6 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
     ${isPreview ? 'padding: 20px 100px;' : ''}
   }
 
-  /* Each .page fills one A4 sheet and forces a break after it */
-  .page {
-    width: 100%;
-    min-height: ${isPreview ? 'auto' : '267mm'};
-    page-break-after: always;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    padding: ${isPreview ? '10px 0' : '20mm 0'};
-  }
-
-  /* Don't add a trailing blank page after the last one */
-  .page:last-child {
-    page-break-after: avoid;
-  }
-
   .section-label {
     font-size: 10px;
     font-weight: bold;
@@ -313,8 +276,11 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
     margin-bottom: 6px;
   }
 
+  /* Keep every item whole — never split across a page break */
   .item-block {
     margin-top: 20px;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .table-label {
@@ -372,8 +338,9 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
 </style>
 </head>
 <body>
-  ${page1}
-  ${extraPages}
+  <div class="section-label">LOGIN INFORMATION</div>
+  ${sessionTableHtml}
+  ${itemBlocksHtml}
 </body>
 </html>`;
 }
@@ -469,6 +436,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   const { items, source } = data;
   const [status, setStatus] = useState("idle");
   const [pdfUri, setPdfUri] = useState(null);
+  const [pdfFileName, setPdfFileName] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const tickScale = useRef(new Animated.Value(1)).current;
   // Mirror showPreview into a ref so the back handler always sees the latest
@@ -498,7 +466,16 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
       // Let expo-print write to its own temp location — don't move it,
       // moving across directories on Android can fail
       const { uri } = await Print.printToFileAsync({ html });
+      const generatedAt = new Date().toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      });
       setPdfUri(uri);
+      setPdfFileName(generatedAt);
       setStatus("done");
     } catch (err) {
       console.error(err);
@@ -519,12 +496,14 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
         Alert.alert("Sharing unavailable", "This device does not support file sharing.");
         return;
       }
-      await Sharing.shareAsync(pdfUri, { mimeType: "application/pdf" });
+      const namedUri = FileSystem.cacheDirectory + pdfFileName + ".pdf";
+      await FileSystem.copyAsync({ from: pdfUri, to: namedUri });
+      await Sharing.shareAsync(namedUri, { mimeType: "application/pdf" });
     } catch (err) {
       // Treat a user-dismissed share sheet as a no-op; surface real failures.
       console.warn("Share failed:", err);
     }
-  }, [pdfUri]);
+  }, [pdfUri, pdfFileName]);
 
   const isSingle = items.length === 1;
 

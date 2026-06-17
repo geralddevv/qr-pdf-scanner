@@ -8,6 +8,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
@@ -156,9 +157,11 @@ export default function SessionScreen({ onSessionStart }) {
         >
           {/* ── Logo / Title — single row ── */}
           <View style={s.hero}>
-            <View style={s.logoInner}>
-              <Text style={s.logoText}>QR</Text>
-            </View>
+            <Image
+              source={require("../../assets/icon.png")}
+              style={s.logoInner}
+              resizeMode="contain"
+            />
             <View style={s.heroText}>
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                   <Text style={s.appTitle}>QR</Text>
@@ -248,24 +251,18 @@ const s = StyleSheet.create({
     paddingBottom: 28,
   },
   logoInner: {
-    width: 52,
-    height: 52,
+    width: 56,
+    height: 56,
     borderRadius: 14,
-    backgroundColor: C.accent,
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "#ffffff",
     flexShrink: 0,
+    borderWidth: 1.5,
+    borderColor: C.accentBorder,
     shadowColor: C.accent,
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
-    elevation: 5,
-  },
-  logoText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "900",
-    letterSpacing: 1,
+    elevation: 4,
   },
   heroText: {
     flex: 1,
