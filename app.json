@@ -37,16 +37,25 @@
         }
       ],
       "expo-font",
-      "./plugins/withSoftInputHidden"
+      "./plugins/withSoftInputHidden",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/splash.png",
+          "imageWidth": 400,
+          "resizeMode": "contain"
+        }
+      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "owner": "geraldxnyx",
     "extra": {
       "eas": {
-        "projectId": "528d9863-bdca-43d9-ab56-7a19a8c82e44"
+        "projectId": "a7e66b2f-17b2-4b13-ba62-08adba2530c8"
       }
-    },
-    "owner": "gerald.2.5"
+    }
   }
 }

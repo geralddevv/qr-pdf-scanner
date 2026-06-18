@@ -46,6 +46,7 @@ const C = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function detectType(raw) {
+  if (typeof raw !== "string") raw = raw == null ? "" : String(raw);
   if (/^https?:\/\//i.test(raw)) return "URL";
   if (/^mailto:/i.test(raw)) return "Email";
   if (/^tel:/i.test(raw)) return "Phone";
@@ -133,6 +134,23 @@ function formatDateOnly(iso) {
   return `${day}/${month}/${year}`;
 }
 
+// Human-friendly name shown in the share sheet, based on the generation time
+// (e.g. "Jun 18, 1.05.00 AM"). Colons are illegal in filenames, so we use
+// periods — otherwise the OS/share target sanitizes them to underscores
+// ("1_05_00"), which looks broken.
+function buildPdfFileName(date = new Date()) {
+  return date
+    .toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    })
+    .replace(/:/g, ".");
+}
+
 function formatTimeOnly(iso) {
   const date = new Date(iso);
   let hours = date.getHours();
@@ -146,9 +164,26 @@ function formatTimeOnly(iso) {
 
 // ─── PDF builders ─────────────────────────────────────────────────────────────
 function escapeHtml(raw) {
-  return raw
+  // Coerce anything (null, undefined, numbers, objects) to a string so a stray
+  // value can never throw and abort PDF generation.
+  if (raw == null) return "";
+  return String(raw)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Last-resort builder: a dead-simple document that cannot fail to assemble,
+// used only if the rich builder ever throws on malformed scan data.
+function buildFallbackHtml(items) {
+  const rows = (items || []).map((item, i) => `
+    <div style="margin:0 0 14px;padding:10px;border:1px solid #000;">
+      <div style="font-weight:bold;margin-bottom:4px;">Scanned Item #${i + 1}</div>
+      <div style="white-space:pre-wrap;word-break:break-word;font-size:11px;">${escapeHtml(item && item.raw)}</div>
+    </div>
+  `).join("");
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+    <style>@page{size:A4;margin:15mm;}body{font-family:Arial,sans-serif;font-size:12px;color:#000;}</style>
+    </head><body><h3 style="margin-bottom:12px;">QR Scan Report</h3>${rows}</body></html>`;
 }
 
 function buildMultiPageHtml(items, source, session, isPreview = false) {
@@ -264,7 +299,7 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
     font-size: 11px;
     color: #000;
     background: #fff;
-    ${isPreview ? 'padding: 20px 100px;' : ''}
+    ${isPreview ? 'padding: 50px 100px;' : ''}
   }
 
   .section-label {
@@ -335,6 +370,13 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
     font-size: 9px;
     color: #555;
   }
+${isPreview ? `
+  /* Preview-only: give every scanned item an identical gap above it so the
+     spacing reads evenly regardless of item type. Does not affect the PDF. */
+  .item-block { margin-top: 0; }
+  .session-table + .item-block,
+  .item-block + .item-block { margin-top: 18px; }
+` : ''}
 </style>
 </head>
 <body>
@@ -392,6 +434,7 @@ function ScanList({ items }) {
   return (
     <View style={sl.wrapper}>
       <ScrollView
+        style={{ flex: 1 }}
         bounces={false}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={sl.listContent}
@@ -415,13 +458,16 @@ function ScanList({ items }) {
 }
 
 const sl = StyleSheet.create({
-  wrapper: { flex: 1, flexDirection: "row" },
-  listContent: { paddingRight: 4, flexGrow: 1 },
+  wrapper: { flex: 1 },
+  listContent: { paddingRight: 10, flexGrow: 1 },
   track: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
     width: 3,
     borderRadius: 2,
     backgroundColor: "rgba(0,45,143,0.12)",
-    marginLeft: 6,
     overflow: "hidden",
   },
   thumb: {
@@ -461,27 +507,41 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
 
   const generatePdf = useCallback(async () => {
     setStatus("generating");
+
+    // 1) Build the HTML. A malformed scan must never abort generation, so on the
+    //    off chance the builder throws we fall back to a minimal plain-text dump.
+    let html;
     try {
-      const html = buildMultiPageHtml(items, source, session);
-      // Let expo-print write to its own temp location — don't move it,
-      // moving across directories on Android can fail
-      const { uri } = await Print.printToFileAsync({ html });
-      const generatedAt = new Date().toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      });
-      setPdfUri(uri);
-      setPdfFileName(generatedAt);
-      setStatus("done");
-    } catch (err) {
-      console.error(err);
-      setStatus("error");
-      Alert.alert("PDF Error", err.message || "Could not generate PDF.");
+      html = buildMultiPageHtml(items, source, session);
+    } catch (buildErr) {
+      console.warn("PDF HTML build failed, using fallback:", buildErr);
+      html = buildFallbackHtml(items);
     }
+
+    // 2) Render to a file. expo-print fails transiently on Android (WebView init
+    //    races, memory pressure), so retry a few times with backoff before
+    //    giving up — this is what makes generation reliable instead of "random".
+    const MAX_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        // Let expo-print write to its own temp location — don't move it,
+        // moving across directories on Android can fail.
+        const { uri } = await Print.printToFileAsync({ html });
+        setPdfUri(uri);
+        setPdfFileName(buildPdfFileName());
+        setStatus("done");
+        return;
+      } catch (err) {
+        console.warn(`PDF generation attempt ${attempt}/${MAX_ATTEMPTS} failed:`, err);
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
+        }
+      }
+    }
+
+    // 3) Every attempt failed. Don't pop an alert — quietly return to the idle
+    //    state so the "Generate PDF" button is right there to tap again.
+    setStatus("idle");
   }, [items, source, session]);
 
   const previewPdf = useCallback(() => {
@@ -496,9 +556,21 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
         Alert.alert("Sharing unavailable", "This device does not support file sharing.");
         return;
       }
-      const namedUri = FileSystem.cacheDirectory + pdfFileName + ".pdf";
-      await FileSystem.copyAsync({ from: pdfUri, to: namedUri });
-      await Sharing.shareAsync(namedUri, { mimeType: "application/pdf" });
+
+      // Share a copy named after the generation time (e.g. "Jun 18, 1:05:00 AM").
+      // If the named copy fails for any reason, fall back to sharing the original
+      // temp file so Share never silently no-ops.
+      let uriToShare = pdfUri;
+      try {
+        const baseName = pdfFileName || buildPdfFileName();
+        const namedUri = FileSystem.cacheDirectory + baseName + ".pdf";
+        await FileSystem.copyAsync({ from: pdfUri, to: namedUri });
+        uriToShare = namedUri;
+      } catch (copyErr) {
+        console.warn("Named copy failed, sharing original:", copyErr);
+      }
+
+      await Sharing.shareAsync(uriToShare, { mimeType: "application/pdf" });
     } catch (err) {
       // Treat a user-dismissed share sheet as a no-op; surface real failures.
       console.warn("Share failed:", err);
@@ -586,18 +658,6 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
               <TouchableOpacity style={s.primaryBtn} onPress={sharePdf} activeOpacity={0.85}>
                 <Ionicons name="share-outline" size={18} color="#fff" />
                 <Text style={s.primaryBtnText}>Share PDF</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          {status === "error" && (
-            <>
-              <View style={s.errorBox}>
-                <Ionicons name="warning-outline" size={16} color={C.error} />
-                <Text style={s.errorText}>Failed to generate PDF</Text>
-              </View>
-              <TouchableOpacity style={s.primaryBtn} onPress={generatePdf} activeOpacity={0.85}>
-                <Text style={s.primaryBtnText}>Try Again</Text>
               </TouchableOpacity>
             </>
           )}
@@ -870,19 +930,6 @@ const s = StyleSheet.create({
     borderColor: C.successBorder,
   },
   doneText: { color: C.success, fontSize: 16, fontWeight: "700" },
-
-  errorBox: {
-    backgroundColor: C.errorDim,
-    borderRadius: 12,
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderColor: C.errorBorder,
-  },
-  errorText: { color: C.error, fontSize: 13, fontWeight: "600" },
 
   previewHeader: {
     flexDirection: "row",

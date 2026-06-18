@@ -160,7 +160,7 @@ export function ScannedStrip({ items, onRemove, onGenerate }) {
         )}
       </View>
 
-      <View style={{ overflow: "visible" }}>
+      <View style={{ height: STRIP_SIZE + 24, overflow: "visible" }}>
         <FlatList
           ref={listRef}
           data={items}

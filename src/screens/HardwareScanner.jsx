@@ -44,6 +44,9 @@ export default function HardwareScanner({
   const suppressFocusRef = useRef(false);
   // Uncontrolled: we track the current value ourselves via ref, not React state
   const currentValueRef = useRef("");
+  // Debounce timer that commits a scan once the input goes quiet — the reliable
+  // signal that a HID scanner's burst has finished (onSubmitEditing is unreliable).
+  const commitTimerRef = useRef(null);
 
   // ── focus without showing soft keyboard ───────────────────────────────────
   const silentFocus = useCallback(() => {
@@ -102,13 +105,20 @@ export default function HardwareScanner({
     return () => {
       isMountedRef.current = false;
       sub.remove();
+      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
     };
   }, [silentFocus]);
 
   // ── commit whatever is currently in the input ─────────────────────────────
-  // Called by onSubmitEditing — hardware scanners send \n which triggers this.
+  // Triggered by a line terminator, by a quiet period, or by onSubmitEditing.
   const commitScan = useCallback(() => {
-    const value = currentValueRef.current.trim();
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
+
+    // Strip any terminator characters the scanner appended before committing.
+    const value = currentValueRef.current.replace(/[\r\n]+/g, "").trim();
     currentValueRef.current = "";
 
     // Clear the native input
@@ -130,10 +140,25 @@ export default function HardwareScanner({
   }, [silentFocus]);
 
   // ── track value changes (uncontrolled) ────────────────────────────────────
+  // HID scanners burst the whole payload in a few ms, then usually send a line
+  // terminator. We can't rely on onSubmitEditing firing (it doesn't on Android
+  // visible-password inputs), so commit as soon as we see a terminator, or once
+  // input has gone quiet for a moment — whichever comes first.
   const handleTextChange = useCallback((text) => {
     currentValueRef.current = text;
     setDisplayText(text);
-  }, []);
+
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+
+    if (/[\r\n]/.test(text)) {
+      commitScan();
+      return;
+    }
+
+    commitTimerRef.current = setTimeout(() => {
+      if (isMountedRef.current && currentValueRef.current) commitScan();
+    }, 160);
+  }, [commitScan]);
 
   // ── remove from strip ─────────────────────────────────────────────────────
   const handleRemoveItem = useCallback((index) => {
@@ -160,6 +185,7 @@ export default function HardwareScanner({
         />
 
         <ScrollView
+          style={{ flex: 1 }}
           contentContainerStyle={s.hwScroll}
           bounces={false}
           keyboardShouldPersistTaps="always"
@@ -254,11 +280,15 @@ export default function HardwareScanner({
           </View>
         </ScrollView>
 
-        <ScannedStrip
-          items={scannedItems}
-          onRemove={handleRemoveItem}
-          onGenerate={canGenerate ? handleGenerate : null}
-        />
+        {/* Docked to the bottom so flex distribution can never push the strip
+            off-screen on native (this was visible on web but clipped in Expo Go). */}
+        <View style={s.stripDock} pointerEvents="box-none">
+          <ScannedStrip
+            items={scannedItems}
+            onRemove={handleRemoveItem}
+            onGenerate={canGenerate ? handleGenerate : null}
+          />
+        </View>
 
         <EditSessionModal
           visible={editModalVisible}
@@ -274,7 +304,15 @@ export default function HardwareScanner({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   hwWrap: { flex: 1, backgroundColor: C.bg },
-  hwScroll: { padding: 20, paddingBottom: 16, paddingTop: 0 },
+  hwScroll: { padding: 20, paddingBottom: 180, paddingTop: 0 },
+
+  // Pins the scanned-items strip to the bottom edge, above the safe-area inset.
+  stripDock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
 
   sessionCard: {
     backgroundColor: C.surface,

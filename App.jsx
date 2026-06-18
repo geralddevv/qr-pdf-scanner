@@ -1,10 +1,13 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { View, StyleSheet, Platform } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import * as SplashScreen from "expo-splash-screen";
 import SessionScreen from "./src/screens/SessionScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import ResultScreen from "./src/screens/ResultScreen";
+
+SplashScreen.preventAutoHideAsync();
 
 const STATUS_BAR_BG = "#002d8f";
 
@@ -16,6 +19,10 @@ export default function App() {
   // Persisted scanner state — survives the trip to ResultScreen and back
   const [persistedItems, setPersistedItems] = useState([]);
   const [persistedMode, setPersistedMode] = useState("camera");
+
+  useEffect(() => {
+    SplashScreen.hideAsync();
+  }, []);
 
   const handleSessionStart = (sessionData) => {
     setSession(sessionData);
