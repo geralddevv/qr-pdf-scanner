@@ -46,8 +46,13 @@ export default function App() {
     setScanResult(null);
   };
 
-  // Go back to session screen (change user/location)
-  const handleChangeSession = () => {
+  // If called with updated data (from the edit modal), just update the session.
+  // If called with no args (intentional "change user"), go back to login.
+  const handleChangeSession = (updatedSession) => {
+    if (updatedSession) {
+      setSession(updatedSession);
+      return;
+    }
     setPersistedItems([]);
     setPersistedMode("camera");
     setScanResult(null);

@@ -42,10 +42,12 @@ export default function HardwareScanner({
   // While true, silentFocus is a no-op. Used to stop the input from grabbing
   // focus (and popping the keyboard) while backgrounded / during resume.
   const suppressFocusRef = useRef(false);
-  // Uncontrolled: we track the current value ourselves via ref, not React state
+  // Logical scan buffer — what we've accumulated but not yet committed.
   const currentValueRef = useRef("");
-  // Debounce timer that commits a scan once the input goes quiet — the reliable
-  // signal that a HID scanner's burst has finished (onSubmitEditing is unreliable).
+  // Last raw string seen from onChangeText. Used to compute deltas so that
+  // already-committed data is never re-processed even if clear() hasn't fired yet.
+  const nativeTextRef = useRef("");
+  // Debounce timer that commits a scan once the input goes quiet.
   const commitTimerRef = useRef(null);
 
   // ── focus without showing soft keyboard ───────────────────────────────────
@@ -109,54 +111,90 @@ export default function HardwareScanner({
     };
   }, [silentFocus]);
 
-  // ── commit whatever is currently in the input ─────────────────────────────
-  // Triggered by a line terminator, by a quiet period, or by onSubmitEditing.
-  const commitScan = useCallback(() => {
+  // ── commit whatever is in the logical buffer ─────────────────────────────
+  // forceAll=true  → timeout path: commit the whole buffer as one scan.
+  // forceAll=false → terminator path: split on \n so two payloads that arrived
+  //                  in the same burst are stored as two separate items.
+  const commitScan = useCallback((forceAll = false) => {
     if (commitTimerRef.current) {
       clearTimeout(commitTimerRef.current);
       commitTimerRef.current = null;
     }
 
-    // Strip any terminator characters the scanner appended before committing.
-    const value = currentValueRef.current.replace(/[\r\n]+/g, "").trim();
-    currentValueRef.current = "";
+    const raw = currentValueRef.current;
+    if (!raw) { silentFocus(); return; }
 
-    // Clear the native input
+    let complete, remainder;
+    if (forceAll || !/[\r\n]/.test(raw)) {
+      complete = [raw.trim()].filter(Boolean);
+      remainder = "";
+    } else {
+      const parts = raw.split(/[\r\n]+/);
+      const endsWithTerminator = /[\r\n]$/.test(raw);
+      complete = (endsWithTerminator ? parts : parts.slice(0, -1))
+        .map((s) => s.trim())
+        .filter(Boolean);
+      remainder = endsWithTerminator ? "" : (parts[parts.length - 1] || "");
+    }
+
+    // Keep the partial next-scan in the logical buffer and clear the native input.
+    // nativeTextRef is intentionally NOT reset here — handleTextChange uses it to
+    // compute the delta on the very next onChangeText, even if clear() fires late.
+    currentValueRef.current = remainder;
     inputRef.current?.clear();
     setDisplayText("");
 
-    if (!value) {
-      silentFocus();
-      return;
+    if (complete.length > 0) {
+      const now = Date.now();
+      setScannedItems((prev) => [
+        ...prev,
+        ...complete.map((r, i) => ({ raw: r, scannedAt: new Date(now + i).toISOString() })),
+      ]);
     }
 
-    setDisplayText(value);
-    setScannedItems((prev) => [
-      ...prev,
-      { raw: value, scannedAt: new Date().toISOString() },
-    ]);
-
-    silentFocus();
+    if (remainder) {
+      commitTimerRef.current = setTimeout(() => {
+        if (isMountedRef.current && currentValueRef.current) commitScan(true);
+      }, 160);
+    } else {
+      silentFocus();
+    }
   }, [silentFocus]);
 
   // ── track value changes (uncontrolled) ────────────────────────────────────
-  // HID scanners burst the whole payload in a few ms, then usually send a line
-  // terminator. We can't rely on onSubmitEditing firing (it doesn't on Android
-  // visible-password inputs), so commit as soon as we see a terminator, or once
-  // input has gone quiet for a moment — whichever comes first.
+  // onChangeText always gives the FULL current native input value. The key trick:
+  // instead of using that value directly, we compute only the DELTA (new chars
+  // appended) by comparing to nativeTextRef. This means already-committed data
+  // is ignored even if clear() hasn't taken effect yet on the native side —
+  // solving the "two scans merged into one box" race on rapid continuous scanning.
   const handleTextChange = useCallback((text) => {
-    currentValueRef.current = text;
-    setDisplayText(text);
+    const prevNative = nativeTextRef.current;
+    nativeTextRef.current = text;
+
+    let append;
+    if (text.length >= prevNative.length && text.startsWith(prevNative)) {
+      // Normal: scanner added more characters to the existing input.
+      append = text.slice(prevNative.length);
+    } else {
+      // Native was reset (clear() fired) — all of `text` is fresh data.
+      // currentValueRef already holds any partial remainder from the last split.
+      append = text;
+    }
+
+    if (!append) return;
+
+    currentValueRef.current += append;
+    setDisplayText(currentValueRef.current);
 
     if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
 
-    if (/[\r\n]/.test(text)) {
+    if (/[\r\n]/.test(currentValueRef.current)) {
       commitScan();
       return;
     }
 
     commitTimerRef.current = setTimeout(() => {
-      if (isMountedRef.current && currentValueRef.current) commitScan();
+      if (isMountedRef.current && currentValueRef.current) commitScan(true);
     }, 160);
   }, [commitScan]);
 

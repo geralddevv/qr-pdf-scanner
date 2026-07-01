@@ -18,6 +18,7 @@ import { WebView } from "react-native-webview";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as Print from "expo-print";
+import { Asset } from "expo-asset";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -115,15 +116,14 @@ function parsePharmaData(raw) {
 
 function formatDateForLogin(iso) {
   const date = new Date(iso);
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const day = date.getDate();
-  const month = monthNames[date.getMonth()];
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
+  const rawHours = date.getHours();
+  const hours = rawHours % 12 || 12;
   const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-  const ampm = date.getHours() >= 12 ? 'PM' : 'AM';
-  return `${day} ${month}, ${hours}:${minutes}:${seconds} ${ampm}`;
+  const ampm = rawHours >= 12 ? 'PM' : 'AM';
+  return `${day}/${month}/${year}, ${hours}:${minutes} ${ampm}`;
 }
 
 function formatDateOnly(iso) {
@@ -186,18 +186,24 @@ function buildFallbackHtml(items) {
     </head><body><h3 style="margin-bottom:12px;">QR Scan Report</h3>${rows}</body></html>`;
 }
 
-function buildMultiPageHtml(items, source, session, isPreview = false) {
+function buildMultiPageHtml(items, source, session, isPreview = false, logoSrc = null) {
   const total = items.length;
 
-  // ── helpers ──────────────────────────────────────────────────────────────
-  const sessionTableHtml = session ? `
+  const logoHtml = logoSrc ? `
+    <div class="pdf-header">
+      <div class="pdf-logo-wrap">${logoSrc}</div>
+    </div>
+  ` : `<div class="pdf-header"></div>`;
+
+  // ── session table ─────────────────────────────────────────────────────────
+  const sessionHtml = session ? `
     <table class="session-table">
       <thead>
         <tr>
           <th>Username</th>
           <th>Location</th>
           <th>Lot / Invoice / Batch No.</th>
-          <th>Generated</th>
+          <th>Generated On</th>
         </tr>
       </thead>
       <tbody>
@@ -213,7 +219,7 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
     <table class="session-table">
       <thead>
         <tr>
-          <th>Generated</th>
+          <th>Generated On</th>
           <th>Source</th>
           <th>Total Items</th>
           <th></th>
@@ -230,56 +236,17 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
     </table>
   `;
 
-  // Build one HTML block per scanned item — no manual pagination
-  const itemBlocksHtml = items.map((item, i) => {
-    const type = detectType(item.raw);
-    const parsedData = type === "Pharma Data" ? parsePharmaData(item.raw) : null;
-
-    if (parsedData) {
-      const rowsHtml = parsedData.map((pair) => `
-        <tr>
-          <td class="pharma-key">${escapeHtml(pair.key)}</td>
-          <td class="pharma-value">${escapeHtml(pair.value)}</td>
-        </tr>
-      `).join('');
-      return `
-        <div class="item-block">
-          <div class="table-label">Scanned Item #${i + 1}</div>
-          <table class="pharma-table">
-            <tbody>${rowsHtml}</tbody>
-          </table>
-          <div class="table-meta">
-            <span>${formatDateOnly(item.scannedAt)}</span>
-            <span>${formatTimeOnly(item.scannedAt)}</span>
-          </div>
-        </div>
-      `;
-    } else {
-      return `
-        <div class="item-block">
-          <div class="table-label">Scanned Item #${i + 1}</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Content</th>
-                <th>Date</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td class="type">${type}</td>
-                <td class="content">${escapeHtml(item.raw)}</td>
-                <td class="date">${formatDateOnly(item.scannedAt)}</td>
-                <td class="time">${formatTimeOnly(item.scannedAt)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      `;
-    }
-  }).join('');
+  // ── one box per scanned item ──────────────────────────────────────────────
+  const itemBlocksHtml = items.map((item, i) => `
+    <div class="item-block">
+      <div class="item-label">Scanned Item #${i + 1}</div>
+      <div class="item-box">${escapeHtml(item.raw)}</div>
+      <div class="item-meta">
+        <span>${formatDateOnly(item.scannedAt)}</span>
+        <span>${formatTimeOnly(item.scannedAt)}</span>
+      </div>
+    </div>
+  `).join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -289,39 +256,20 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  @page {
-    size: A4;
-    margin: 15mm;
-  }
+  @page { size: A4; margin: 8mm; }
 
   body {
     font-family: Arial, Helvetica, sans-serif;
     font-size: 11px;
     color: #000;
     background: #fff;
-    ${isPreview ? 'padding: 50px 100px;' : ''}
+    ${isPreview ? 'padding: 40px 80px;' : ''}
   }
 
   .section-label {
     font-size: 10px;
     font-weight: bold;
     letter-spacing: 1.2px;
-    color: #555;
-    text-transform: uppercase;
-    margin-bottom: 6px;
-  }
-
-  /* Keep every item whole — never split across a page break */
-  .item-block {
-    margin-top: 20px;
-    break-inside: avoid;
-    page-break-inside: avoid;
-  }
-
-  .table-label {
-    font-size: 10px;
-    font-weight: bold;
-    letter-spacing: 1px;
     color: #555;
     text-transform: uppercase;
     margin-bottom: 6px;
@@ -348,40 +296,64 @@ function buildMultiPageHtml(items, source, session, isPreview = false) {
     padding: 7px 8px;
   }
 
-  tr:nth-child(even) td {
-    background-color: #f9f9f9;
-  }
-
   .session-table { margin-bottom: 0; }
 
-  .type   { text-align: center; width: 15%; font-weight: 600; }
-  .content { width: 50%; word-break: break-word; font-size: 10px; }
-  .date   { width: 17.5%; text-align: center; }
-  .time   { width: 17.5%; text-align: center; }
+  .pdf-header {
+    width: 100%;
+    border-bottom: 1px solid #000;
+    text-align: center;
+    padding: 6px 0 10px;
+    margin-bottom: 14px;
+  }
 
-  .pharma-table td { border: 1px solid #000; padding: 7px 8px; font-size: 10px; }
-  .pharma-key   { font-weight: bold; width: 35%; background-color: #e8e8e8; }
-  .pharma-value { word-break: break-word; }
+  .pdf-logo-wrap {
+    display: inline-block;
+    width: 65%;
+  }
 
-  .table-meta {
+  .pdf-logo-wrap svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    overflow: visible;
+  }
+
+  .item-block {
+    margin-top: 20px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .item-label {
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #555;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .item-box {
+    border: 1px solid #000;
+    padding: 10px 12px;
+    font-size: 10px;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .item-meta {
     display: flex;
     justify-content: space-between;
     margin-top: 5px;
     font-size: 9px;
     color: #555;
   }
-${isPreview ? `
-  /* Preview-only: give every scanned item an identical gap above it so the
-     spacing reads evenly regardless of item type. Does not affect the PDF. */
-  .item-block { margin-top: 0; }
-  .session-table + .item-block,
-  .item-block + .item-block { margin-top: 18px; }
-` : ''}
 </style>
 </head>
 <body>
+  ${logoHtml}
   <div class="section-label">LOGIN INFORMATION</div>
-  ${sessionTableHtml}
+  ${sessionHtml}
   ${itemBlocksHtml}
 </body>
 </html>`;
@@ -484,6 +456,24 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   const [pdfUri, setPdfUri] = useState(null);
   const [pdfFileName, setPdfFileName] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [logoBase64, setLogoBase64] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const asset = Asset.fromModule(require("../../assets/wockhardt logo svg.svg"));
+        await asset.downloadAsync();
+        const svgText = await FileSystem.readAsStringAsync(asset.localUri);
+        // Inject explicit width/height so the browser has a known intrinsic size
+        // and height:auto can compute the correct aspect-ratio when CSS scales it.
+        const svgWithDims = svgText.trim()
+          .replace(/<svg /, '<svg overflow="visible" ');
+        setLogoBase64(svgWithDims);
+      } catch (e) {
+        console.warn("Logo load failed:", e);
+      }
+    })();
+  }, []);
   const tickScale = useRef(new Animated.Value(1)).current;
   // Mirror showPreview into a ref so the back handler always sees the latest
   // value without needing to re-subscribe on every toggle.
@@ -512,7 +502,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
     //    off chance the builder throws we fall back to a minimal plain-text dump.
     let html;
     try {
-      html = buildMultiPageHtml(items, source, session);
+      html = buildMultiPageHtml(items, source, session, false, logoBase64);
     } catch (buildErr) {
       console.warn("PDF HTML build failed, using fallback:", buildErr);
       html = buildFallbackHtml(items);
@@ -542,7 +532,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
     // 3) Every attempt failed. Don't pop an alert — quietly return to the idle
     //    state so the "Generate PDF" button is right there to tap again.
     setStatus("idle");
-  }, [items, source, session]);
+  }, [items, source, session, logoBase64]);
 
   const previewPdf = useCallback(() => {
     setShowPreview(true);
@@ -692,7 +682,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
             <WebView
               style={{ flex: 1 }}
               originWhitelist={["*"]}
-              source={{ html: buildMultiPageHtml(items, source, session, true) }}
+              source={{ html: buildMultiPageHtml(items, source, session, true, logoBase64) }}
               startInLoadingState
               scalesPageToFit={true}
               builtInZoomControls={true}
