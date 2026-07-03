@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as Print from "expo-print";
 import { Asset } from "expo-asset";
@@ -570,7 +570,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   const isSingle = items.length === 1;
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={s.safe} edges={["bottom"]}>
       <View style={s.scroll}>
 
         {/* Top bar */}

@@ -143,7 +143,7 @@ export default function SessionScreen({ onSessionStart }) {
   };
 
   return (
-    <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
+    <SafeAreaView style={s.safe} edges={["bottom"]}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}

@@ -77,7 +77,7 @@ export default function CameraScanner({
 
   if (!permission.granted) {
     return (
-      <SafeAreaView style={s.permWrap} edges={["top", "bottom"]}>
+      <SafeAreaView style={s.permWrap} edges={["bottom"]}>
         <View style={s.permIconWrap}>
           <Ionicons name="camera-outline" size={40} color={C.accent} />
         </View>
@@ -114,7 +114,7 @@ export default function CameraScanner({
       />
 
       {/* Header/Navbar with SafeAreaView - positioned on top */}
-      <SafeAreaView edges={["top"]} style={s.headerSafeArea}>
+      <SafeAreaView edges={[]} style={s.headerSafeArea}>
         <ScannerHeader 
           session={session} 
           onEditPress={() => setEditModalVisible(true)}
@@ -126,7 +126,7 @@ export default function CameraScanner({
 
         {/* Torch button — absolutely positioned on the viewport top-right */}
         <SafeAreaView
-          edges={["top"]}
+          edges={[]}
           style={s.torchWrap}
           pointerEvents="box-none"
         >

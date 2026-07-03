@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
-import { View, StyleSheet, Platform } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
 import SessionScreen from "./src/screens/SessionScreen";
 import ScannerScreen from "./src/screens/ScannerScreen";
 import ResultScreen from "./src/screens/ResultScreen";
+import DeviceLockScreen from "./src/screens/DeviceLockScreen";
+import { getDeviceId, isDeviceAuthorized } from "./src/utils/deviceLock";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -20,9 +22,23 @@ export default function App() {
   const [persistedItems, setPersistedItems] = useState([]);
   const [persistedMode, setPersistedMode] = useState("camera");
 
+  // Offline device lock — null while checking, then true/false
+  const [deviceAuthorized, setDeviceAuthorized] = useState(null);
+  const [deviceId, setDeviceId] = useState(null);
+
   useEffect(() => {
-    SplashScreen.hideAsync();
+    (async () => {
+      const id = await getDeviceId();
+      setDeviceId(id);
+      setDeviceAuthorized(await isDeviceAuthorized());
+    })();
   }, []);
+
+  useEffect(() => {
+    if (deviceAuthorized !== null) {
+      SplashScreen.hideAsync();
+    }
+  }, [deviceAuthorized]);
 
   const handleSessionStart = (sessionData) => {
     setSession(sessionData);
@@ -87,13 +103,16 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      {/* White status bar background that works on both iOS and Android */}
-      <StatusBar style="light" backgroundColor={STATUS_BAR_BG} translucent={false} />
-      {Platform.OS === "ios" && (
-        <SafeAreaView edges={["top"]} style={styles.statusBarFill} />
-      )}
+      {/* Android 15+ / iOS both render edge-to-edge now, so the native
+          status bar background color is ignored — paint it ourselves. */}
+      <StatusBar style="light" />
+      <SafeAreaView edges={["top"]} style={styles.statusBarFill} />
       <View style={styles.root}>
-        {renderScreen()}
+        {deviceAuthorized === null
+          ? null
+          : deviceAuthorized
+          ? renderScreen()
+          : <DeviceLockScreen deviceId={deviceId} />}
       </View>
     </SafeAreaProvider>
   );

@@ -220,19 +220,23 @@ export function EditSessionModal({ visible, session, onSave, onDismiss }) {
   return (
     <Modal
       visible={visible}
-      transparent
+      transparent={true}
       animationType="fade"
       onRequestClose={onDismiss}
+      statusBarTranslucent
+      navigationBarTranslucent
     >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      <Pressable
+        style={em.overlayContainer}
+        onPress={onDismiss}
       >
-        {/* Backdrop */}
-        <Pressable style={em.backdrop} onPress={onDismiss} />
-
         {/* Sheet */}
-        <View style={em.sheetWrap} pointerEvents="box-none">
+        <KeyboardAvoidingView
+          style={em.sheetContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          pointerEvents="box-none"
+          onPress={(e) => e.stopPropagation()}
+        >
           <View style={em.sheet}>
             {/* Header */}
             <View style={em.header}>
@@ -299,8 +303,8 @@ export function EditSessionModal({ visible, session, onSave, onDismiss }) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </Pressable>
     </Modal>
   );
 }
@@ -334,22 +338,25 @@ function ModalField({ label, icon, placeholder, value, onChangeText, inputRef, o
 }
 
 const em = StyleSheet.create({
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(10,18,40,0.55)",
-  },
-  sheetWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    top: 0,
+  overlayContainer: {
+    flex: 1,
+    backgroundColor: "rgba(10,18,40,0.62)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  sheetContainer: {
+    width: "100%",
     paddingHorizontal: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    pointerEvents: "auto",
+  },
+  sheetWrap: {
+    width: "100%",
   },
   sheet: {
     width: "100%",
+    maxWidth: 340,
     backgroundColor: C.surface,
     borderRadius: 20,
     overflow: "hidden",

@@ -214,7 +214,7 @@ export default function HardwareScanner({
 
   return (
     <View style={s.hwWrap}>
-      <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+      <SafeAreaView style={{ flex: 1 }} edges={["bottom"]}>
 
         <ScannerHeader
           session={session}
