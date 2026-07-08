@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml:2:13-83
+INJECTED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml:2:13-83
+	package
+		INJECTED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml
+	xmlns:android
+		ADDED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml:2:23-81
+uses-sdk
+INJECTED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml reason: use-sdk injection requested
+INJECTED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml
+INJECTED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml
+	android:targetSdkVersion
+		INJECTED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml
+	android:minSdkVersion
+		INJECTED from /home/gerald/projects/qr-pdf-scanner/modules/no-learning-text-input/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest10618798462283215816.xml

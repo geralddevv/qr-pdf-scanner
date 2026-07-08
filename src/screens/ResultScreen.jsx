@@ -13,6 +13,7 @@ import {
   Linking,
   BackHandler,
 } from "react-native";
+import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import * as FileSystem from "expo-file-system/legacy";
@@ -461,7 +462,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
   useEffect(() => {
     (async () => {
       try {
-        const asset = Asset.fromModule(require("../../assets/wockhardt logo svg.svg"));
+        const asset = Asset.fromModule(require("../../assets/wockhardt-logo.svg"));
         await asset.downloadAsync();
         const svgText = await FileSystem.readAsStringAsync(asset.localUri);
         // Inject explicit width/height so the browser has a known intrinsic size
@@ -571,6 +572,7 @@ export default function ResultScreen({ data, session, onReset, onClearReset, onC
 
   return (
     <SafeAreaView style={s.safe} edges={["bottom"]}>
+      <StatusBar style={showPreview ? "dark" : "light"} />
       <View style={s.scroll}>
 
         {/* Top bar */}

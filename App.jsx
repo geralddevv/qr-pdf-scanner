@@ -104,15 +104,24 @@ export default function App() {
   return (
     <SafeAreaProvider>
       {/* Android 15+ / iOS both render edge-to-edge now, so the native
-          status bar background color is ignored — paint it ourselves. */}
-      <StatusBar style="light" />
+          status bar background color is ignored — paint it ourselves.
+          ResultScreen owns the status bar style itself while it's mounted
+          (it needs to switch to dark content for its white PDF preview),
+          so we back off here to avoid two StatusBar components fighting
+          over the same native merge stack. */}
+      {!scanResult && <StatusBar style="light" />}
       <SafeAreaView edges={["top"]} style={styles.statusBarFill} />
       <View style={styles.root}>
         {deviceAuthorized === null
           ? null
           : deviceAuthorized
           ? renderScreen()
-          : <DeviceLockScreen deviceId={deviceId} />}
+          : (
+            <DeviceLockScreen
+              deviceId={deviceId}
+              onActivated={() => setDeviceAuthorized(true)}
+            />
+          )}
       </View>
     </SafeAreaProvider>
   );
