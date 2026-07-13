@@ -1,0 +1,82 @@
+<%- include('partials/header', { title: license.license_code + ' — License Admin', showLogout: true }) %>
+
+<a class="back-link" href="/admin">&larr; All licenses</a>
+
+<h1><code><%= license.license_code %></code></h1>
+<p class="muted" style="margin-top:0; margin-bottom: 24px;">
+  <span class="badge <%= license.status %>"><%= license.status %></span>
+  &middot; issued <%= license.created_at %>
+</p>
+
+<div class="card">
+  <h2>Label</h2>
+  <p class="muted">Use something that identifies this specific phone, not just the client — e.g. "Ramesh Traders — Suresh" rather than just "Ramesh Traders", if the client has more than one device.</p>
+  <form action="/admin/licenses/<%= license.id %>/label" method="post" class="row">
+    <input type="text" name="label" value="<%= license.label || '' %>" placeholder="Client name / phone owner" style="flex: 1;" />
+    <button type="submit">Save</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Current binding</h2>
+  <% if (activeBinding) { %>
+    <p>Bound to device <code><%= activeBinding.device_id %></code> since <%= activeBinding.bound_at %>.</p>
+    <form action="/admin/licenses/<%= license.id %>/release" method="post"
+          onsubmit="return confirm('Release this device binding? The license will become activatable on a new device.');">
+      <button type="submit" class="danger">Release binding</button>
+    </form>
+  <% } else { %>
+    <p class="muted">Not currently bound to any device.</p>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>License status</h2>
+  <% if (license.status === 'active') { %>
+    <form action="/admin/licenses/<%= license.id %>/revoke" method="post"
+          onsubmit="return confirm('Revoke this license? It will stop working immediately, including on the currently bound device.');">
+      <button type="submit" class="danger">Revoke license</button>
+    </form>
+  <% } else { %>
+    <form action="/admin/licenses/<%= license.id %>/unrevoke" method="post">
+      <button type="submit">Reactivate license</button>
+    </form>
+  <% } %>
+</div>
+
+<div class="section-label">Binding history</div>
+<table class="list">
+  <thead><tr><th>Device</th><th>Bound at</th><th>Released at</th></tr></thead>
+  <tbody>
+    <% bindings.forEach(function(b) { %>
+      <tr>
+        <td><code><%= b.device_id %></code></td>
+        <td><%= b.bound_at %></td>
+        <td><%= b.released_at || "—" %></td>
+      </tr>
+    <% }) %>
+    <% if (bindings.length === 0) { %>
+      <tr><td colspan="3" class="muted">No bindings yet.</td></tr>
+    <% } %>
+  </tbody>
+</table>
+
+<div class="section-label">Activation attempts</div>
+<table class="list">
+  <thead><tr><th>Result</th><th>Device</th><th>IP</th><th>When</th></tr></thead>
+  <tbody>
+    <% attempts.forEach(function(a) { %>
+      <tr>
+        <td><span class="badge attempt-<%= a.result %>"><%= a.result %></span></td>
+        <td><code><%= a.device_id %></code></td>
+        <td><%= a.ip || "—" %></td>
+        <td><%= a.created_at %></td>
+      </tr>
+    <% }) %>
+    <% if (attempts.length === 0) { %>
+      <tr><td colspan="4" class="muted">No activation attempts yet.</td></tr>
+    <% } %>
+  </tbody>
+</table>
+
+<%- include('partials/footer') %>

@@ -17,9 +17,18 @@ import { activateDevice } from "../utils/deviceLock";
 
 const BRAND = "#002d8f";
 
-// Mirrors the XXXXX-XXXXX-XXXXX-XXXXX-XXXXX format issued by
-// scripts/activate-device.js — formats as the user types.
+// Mirrors the XXXXX-XXXXX-XXXXX-XXXXX-XXXXX format issued by the license
+// admin panel (see /server) — formats as the user types.
 const ACTIVATION_MASK = "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX";
+
+const ERROR_MESSAGES = {
+  invalid_license: "License code not recognized. Double-check and try again.",
+  license_revoked: "This license has been revoked. Contact your administrator.",
+  device_mismatch:
+    "This license is already active on a different device. Contact your administrator to release it.",
+  network_error: "Couldn't reach the activation server. Check your connection and try again.",
+  server_error: "Something went wrong. Try again in a moment.",
+};
 
 function formatActivationInput(raw) {
   const clean = raw
@@ -47,12 +56,12 @@ export default function DeviceLockScreen({ deviceId, onActivated }) {
     if (!activationKey.trim() || checking) return;
     setChecking(true);
     setError(null);
-    const ok = await activateDevice(activationKey);
+    const result = await activateDevice(activationKey);
     setChecking(false);
-    if (ok) {
+    if (result.ok) {
       onActivated();
     } else {
-      setError("Invalid activation key for this device.");
+      setError(ERROR_MESSAGES[result.reason] ?? ERROR_MESSAGES.server_error);
     }
   };
 
@@ -72,32 +81,11 @@ export default function DeviceLockScreen({ deviceId, onActivated }) {
 
           <Text style={styles.title}>Device Not Authorized</Text>
           <Text style={styles.message}>
-            This app is locked to specific devices. Send the device ID below
-            to your administrator to receive an activation key.
+            This app is locked to specific devices. Enter the license code
+            your administrator sent you to activate this device.
           </Text>
 
-          <View style={styles.idCard}>
-            <Text style={styles.idLabel}>DEVICE ID</Text>
-            <View style={styles.idRow}>
-              <Text selectable style={styles.id}>
-                {deviceId ?? "unavailable"}
-              </Text>
-              <TouchableOpacity
-                style={[styles.copyButton, copied && styles.copyButtonCopied]}
-                onPress={handleCopyDeviceId}
-                disabled={!deviceId}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={copied ? "checkmark" : "copy-outline"}
-                  size={16}
-                  color={copied ? "#2e7d32" : BRAND}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <Text style={styles.inputLabel}>Activation key</Text>
+          <Text style={styles.inputLabel}>License code</Text>
           <View
             style={[
               styles.inputStack,
@@ -154,6 +142,27 @@ export default function DeviceLockScreen({ deviceId, onActivated }) {
               <Text style={styles.buttonText}>Activate Device</Text>
             )}
           </TouchableOpacity>
+
+          <View style={styles.supportRow}>
+            <Text style={styles.supportLabel}>
+              Device ID (for support reference only):
+            </Text>
+            <TouchableOpacity
+              style={styles.supportCopyRow}
+              onPress={handleCopyDeviceId}
+              disabled={!deviceId}
+              activeOpacity={0.7}
+            >
+              <Text selectable style={styles.supportId}>
+                {deviceId ?? "unavailable"}
+              </Text>
+              <Ionicons
+                name={copied ? "checkmark" : "copy-outline"}
+                size={13}
+                color={copied ? "#2e7d32" : "#999"}
+              />
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -198,47 +207,24 @@ const styles = StyleSheet.create({
     marginBottom: 24,
     maxWidth: 320,
   },
-  idCard: {
-    width: "100%",
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: 14,
-    marginBottom: 28,
+  supportRow: {
+    marginTop: 24,
+    alignItems: "center",
   },
-  idLabel: {
+  supportLabel: {
     fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 0.5,
-    color: "#999",
+    color: "#aaa",
     marginBottom: 4,
   },
-  idRow: {
+  supportCopyRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 6,
   },
-  id: {
-    flexShrink: 1,
-    fontSize: 15,
+  supportId: {
+    fontSize: 12,
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
-    color: "#1a1a1a",
-    marginRight: 12,
-  },
-  copyButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#dbe1f0",
-    backgroundColor: "#f2f4fb",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  copyButtonCopied: {
-    borderColor: "#bfe3c4",
-    backgroundColor: "#e9f7eb",
+    color: "#999",
   },
   inputLabel: {
     alignSelf: "flex-start",

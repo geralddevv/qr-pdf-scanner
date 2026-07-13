@@ -1,0 +1,47 @@
+<%- include('partials/header', { title: 'Licenses — License Admin', showLogout: true }) %>
+
+<div class="page-header">
+  <h1>Licenses</h1>
+</div>
+
+<div class="card">
+  <h2>Issue new license</h2>
+  <form action="/admin/licenses" method="post" class="row">
+    <input type="text" name="label" placeholder="Client / phone owner (optional)" style="flex: 1; min-width: 220px;" />
+    <button type="submit">Issue license</button>
+  </form>
+</div>
+
+<form action="/admin" method="get" class="row" style="margin-bottom: 18px;">
+  <input type="text" name="q" placeholder="Search by client name, license code, or device ID" value="<%= q %>" style="flex: 1; min-width: 260px;" />
+  <button type="submit">Search</button>
+  <% if (q) { %><a class="link-button" href="/admin">Clear</a><% } %>
+</form>
+
+<table class="list">
+  <thead>
+    <tr>
+      <th>Code</th>
+      <th>Label</th>
+      <th>Status</th>
+      <th>Bound device</th>
+      <th>Since</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% licenses.forEach(function(l) { %>
+      <tr>
+        <td><a href="/admin/licenses/<%= l.id %>"><code><%= l.license_code %></code></a></td>
+        <td><%= l.label || "—" %></td>
+        <td><span class="badge <%= l.status %>"><%= l.status %></span></td>
+        <td><% if (l.bound_device_id) { %><code><%= l.bound_device_id %></code><% } else { %><span class="muted">— unbound —</span><% } %></td>
+        <td class="muted"><%= l.bound_at || "—" %></td>
+      </tr>
+    <% }) %>
+    <% if (licenses.length === 0) { %>
+      <tr><td colspan="5" class="muted"><%= q ? "No licenses match that search." : "No licenses issued yet." %></td></tr>
+    <% } %>
+  </tbody>
+</table>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,16 @@
+[Unit]
+Description=QR PDF Scanner license/activation server
+After=network.target
+
+[Service]
+Type=simple
+# Adjust to wherever this repo lives on the VPS.
+WorkingDirectory=/opt/qr-pdf-scanner/server
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+User=qrlicense
+EnvironmentFile=/opt/qr-pdf-scanner/server/.env
+
+[Install]
+WantedBy=multi-user.target

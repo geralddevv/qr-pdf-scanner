@@ -5,9 +5,7 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios",
-    "keygen": "node scripts/keygen.js",
-    "activate-device": "node scripts/activate-device.js"
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "@expo/metro-runtime": "~56.0.16",
