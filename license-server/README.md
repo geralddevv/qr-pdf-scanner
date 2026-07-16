@@ -57,6 +57,11 @@ deploy/                 systemd units (server + daily backup timer) + deployment
 
 `POST /api/activate` with `{ "licenseCode": "...", "deviceId": "..." }`:
 
+Browser clients are supported cross-origin. Set `ALLOWED_ORIGINS` in `.env` to
+a comma-separated allowlist (for example, `https://app.example.com`); it
+defaults to `*`. CORS is applied only to `/api`, never the cookie-authenticated
+admin panel.
+
 - `200` — `{ "credential": { algo, licenseCode, deviceId, issuedAt, signature } }`. Verify this locally with the public key printed by `generate-keypair` before trusting/storing it.
 - `404 invalid_license` — code not recognized.
 - `403 license_revoked` — code exists but has been revoked.

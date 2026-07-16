@@ -27,6 +27,35 @@ const adminRouter = require("./routes/admin");
 
 const app = express();
 
+// The activation endpoint is consumed by client apps hosted on a different
+// origin, so it must answer browser CORS preflight requests. Keep this scoped
+// to /api: the admin panel uses cookie sessions and must never be exposed to
+// cross-origin requests.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "*")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+function activationCors(req, res, next) {
+  const origin = req.get("Origin");
+
+  // Requests from native clients and same-origin browser requests may not have
+  // an Origin header and do not need CORS headers.
+  if (!origin) return next();
+
+  const allowAnyOrigin = allowedOrigins.includes("*");
+  if (allowAnyOrigin || allowedOrigins.includes(origin)) {
+    res.set("Access-Control-Allow-Origin", allowAnyOrigin ? "*" : origin);
+    res.vary("Origin");
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Max-Age", "86400");
+  }
+
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  return next();
+}
+
 // Whether we're behind a reverse proxy (nginx/Caddy) at all — needed so
 // req.ip reflects the real client, not the proxy, which both the activate
 // rate limiter and the audit log's per-IP fraud signal depend on. Kept
@@ -85,7 +114,7 @@ app.use(
 
 app.get("/healthz", (req, res) => res.status(200).json({ ok: true }));
 
-app.use("/api", activateRouter);
+app.use("/api", activationCors, activateRouter);
 app.use("/admin", adminRouter);
 
 app.get("/", (req, res) => res.redirect("/admin"));
@@ -110,8 +139,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "server_error", message: "Something went wrong." });
 });
 
-const port = process.env.PORT || 3000;
-const server = app.listen(port, () => {
+const port = process.env.PORT || 3100;
+const server = app.listen(port, "0.0.0.0", () => {
   console.log(`License server listening on port ${port}`);
 });
 

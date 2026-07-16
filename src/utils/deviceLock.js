@@ -10,7 +10,8 @@ import naclUtil from "tweetnacl-util";
 // Only contacted at activation time — every subsequent launch verifies the
 // stored credential locally via isDeviceAuthorized(), with no network call.
 const ACTIVATION_SERVER_URLS = [
-  "http://http://43.230.44.198/:3100",
+  "http://localhost:3100",
+  // Replace with your real HTTPS production domain when deployed behind TLS.
   "https://license.fairtechsystems.com",
 ];
 
