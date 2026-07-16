@@ -106,7 +106,7 @@
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				F493F91B9415444183146F1C /* [Expo Dev Launcher] Strip Local Network Keys for Release */,
+				EC67359D846542D192D8C234 /* [Expo Dev Launcher] Strip Local Network Keys for Release */,
 			);
 			buildRules = (
 			);
@@ -223,7 +223,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-QRPDFScanner/Pods-QRPDFScanner-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		F493F91B9415444183146F1C /* [Expo Dev Launcher] Strip Local Network Keys for Release */ = {
+		EC67359D846542D192D8C234 /* [Expo Dev Launcher] Strip Local Network Keys for Release */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -309,7 +309,7 @@ fi
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.yourname.qrpdfscanner";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.fairtech.qrpdfscanner";
 				PRODUCT_NAME = "QRPDFScanner";
 				SWIFT_OBJC_BRIDGING_HEADER = "QRPDFScanner/QRPDFScanner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -339,7 +339,7 @@ fi
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.yourname.qrpdfscanner";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.fairtech.qrpdfscanner";
 				PRODUCT_NAME = "QRPDFScanner";
 				SWIFT_OBJC_BRIDGING_HEADER = "QRPDFScanner/QRPDFScanner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

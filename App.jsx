@@ -28,9 +28,17 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const id = await getDeviceId();
-      setDeviceId(id);
-      setDeviceAuthorized(await isDeviceAuthorized());
+      try {
+        const id = await getDeviceId();
+        setDeviceId(id);
+        setDeviceAuthorized(await isDeviceAuthorized());
+      } catch (e) {
+        // A device-id/secure-store hiccup must never leave the splash screen
+        // up forever — fail closed to the activation screen instead.
+        console.warn("Device authorization check failed:", e);
+        setDeviceId(null);
+        setDeviceAuthorized(false);
+      }
     })();
   }, []);
 

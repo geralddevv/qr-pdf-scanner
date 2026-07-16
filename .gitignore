@@ -1,3 +1,9 @@
 /node_modules
 /dist.expo/
 .expo/
+
+# license-server
+license-server/node_modules/
+license-server/.env
+license-server/data/
+license-server/.keys/

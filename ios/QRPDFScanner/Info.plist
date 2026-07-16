@@ -27,7 +27,7 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>com.yourname.qrpdfscanner</string>
+          <string>com.fairtech.qrpdfscanner</string>
         </array>
       </dict>
       <dict>
@@ -56,6 +56,8 @@
     </array>
     <key>NSCameraUsageDescription</key>
     <string>Allow QR PDF Scanner to access your camera to scan QR codes.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer.</string>
     <key>NSMicrophoneUsageDescription</key>

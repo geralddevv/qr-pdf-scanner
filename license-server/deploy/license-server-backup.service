@@ -1,0 +1,9 @@
+[Unit]
+Description=License server SQLite backup
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/license-server
+ExecStart=/usr/bin/npm run backup
+User=licenseserver

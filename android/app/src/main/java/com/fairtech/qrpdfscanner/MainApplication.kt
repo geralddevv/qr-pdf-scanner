@@ -1,4 +1,4 @@
-package com.yourname.qrpdfscanner
+package com.fairtech.qrpdfscanner
 
 import android.app.Application
 import android.content.res.Configuration

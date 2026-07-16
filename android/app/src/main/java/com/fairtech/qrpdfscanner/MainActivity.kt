@@ -1,4 +1,4 @@
-package com.yourname.qrpdfscanner
+package com.fairtech.qrpdfscanner
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

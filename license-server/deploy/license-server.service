@@ -1,0 +1,18 @@
+[Unit]
+Description=License/activation server
+After=network.target
+
+[Service]
+Type=simple
+# Adjust to wherever this repo lives on the VPS, and to a unique path/user
+# per app if you're running more than one instance on the same host.
+WorkingDirectory=/opt/license-server
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+User=licenseserver
+EnvironmentFile=/opt/license-server/.env
+
+[Install]
+WantedBy=multi-user.target
