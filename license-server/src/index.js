@@ -92,7 +92,22 @@ app.locals.formatDateTime = (value) => {
   }).format(date);
 };
 
-app.use(helmet());
+// Helmet's default CSP upgrades every HTTP subresource/form target to HTTPS.
+// That is correct behind a TLS reverse proxy, but breaks a deliberately
+// plain-HTTP, port-forwarded deployment (for example http://IP:3100). COOP and
+// Origin-Agent-Cluster likewise have no effect on an untrustworthy HTTP origin
+// and only produce browser warnings. Keep those headers for HTTPS deployments.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        upgradeInsecureRequests: secureCookies ? [] : null,
+      },
+    },
+    crossOriginOpenerPolicy: secureCookies ? { policy: "same-origin" } : false,
+    originAgentCluster: secureCookies,
+  })
+);
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: false, limit: "10kb" }));
 app.use(express.static(path.join(__dirname, "public")));

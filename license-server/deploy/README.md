@@ -26,6 +26,11 @@ Fill in `.env`:
 - `TRUST_PROXY=true` as soon as step 4's reverse proxy is in front of this app — even before TLS is live. Without it, every request's IP looks like the proxy's own IP, which silently breaks the `/api/activate` rate limiter (every client shares one bucket) and the audit log's per-IP fraud signal.
 - `TRUST_PROXY_HTTPS=true` once step 4's TLS is actually live, so session cookies are marked `Secure`.
 
+For a temporary router port-forward accessed as `http://IP:PORT`, leave
+`TRUST_PROXY_HTTPS=false`. The server then omits browser headers that require a
+trustworthy HTTPS origin. This is suitable only for short-lived/private testing:
+the admin password and license codes travel unencrypted over HTTP.
+
 ## 3. Generate the activation keypair
 
 ```
