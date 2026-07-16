@@ -9,8 +9,10 @@ Originally built for a React Native app (QR PDF Scanner) but has no app-specific
 - The client app calls `POST /api/activate` **once**, at activation time, with a license code and its device ID.
 - The server binds the code to that device (or rejects if the code is already bound to a *different* device).
 - The server signs a credential (Ed25519) that the app verifies locally forever after — no further network calls needed for normal use.
-- You manage licenses (issue, search, revoke) and device bindings (view, release) through a password-protected admin panel at `/admin`.
+- You manage licenses (issue, search, revoke), optional System IDs, and device bindings (view, release) through a password-protected admin panel at `/admin`.
 - Every activation attempt — successful or rejected — is logged in an audit trail.
+- Admin sessions are stored in the local SQLite database, so normal server restarts do not log out admins.
+- Failed admin logins are limited to five attempts per IP every 15 minutes.
 
 ## Quick start (local dev)
 

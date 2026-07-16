@@ -159,6 +159,12 @@ code {
   font-size: 12.5px;
 }
 
+.license-code {
+  font-size: 24px;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+}
+
 .muted { color: var(--muted); }
 .error {
   color: #c0392b;
@@ -249,12 +255,18 @@ a { color: var(--brand); }
 
 .back-link {
   display: inline-block;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-sm);
   font-size: 13.5px;
-  color: var(--muted);
+  font-weight: 600;
+  color: var(--text-soft);
   text-decoration: none;
 }
-.back-link:hover { color: var(--brand); }
+.back-link:hover { color: var(--brand); border-color: var(--brand); }
 
 .section-label {
   font-size: 12px;

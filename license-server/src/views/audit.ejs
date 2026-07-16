@@ -22,7 +22,7 @@
         <td><code><%= a.license_code %></code></td>
         <td><code><%= a.device_id %></code></td>
         <td class="muted"><%= a.ip || "—" %></td>
-        <td class="muted"><%= a.created_at %></td>
+        <td class="muted"><%= typeof formatDateTime === 'function' ? formatDateTime(a.created_at) : a.created_at %></td>
       </tr>
     <% }) %>
     <% if (attempts.length === 0) { %>

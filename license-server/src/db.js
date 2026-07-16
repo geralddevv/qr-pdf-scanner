@@ -16,6 +16,7 @@ db.exec(`
     id INTEGER PRIMARY KEY,
     license_code TEXT UNIQUE NOT NULL,
     label TEXT,
+    system_id TEXT,
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','revoked')),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   );
@@ -47,6 +48,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_bindings_license ON device_bindings(license_id);
   CREATE INDEX IF NOT EXISTS idx_attempts_license_code ON activation_attempts(license_code);
   CREATE INDEX IF NOT EXISTS idx_attempts_device_id ON activation_attempts(device_id);
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    sid TEXT PRIMARY KEY,
+    sess TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 `);
+
+// Existing deployments already have a licenses table, so CREATE TABLE IF NOT
+// EXISTS cannot add the new column for them.
+const licenseColumns = db.prepare("PRAGMA table_info(licenses)").all();
+if (!licenseColumns.some((column) => column.name === "system_id")) {
+  db.exec("ALTER TABLE licenses ADD COLUMN system_id TEXT");
+}
 
 module.exports = db;

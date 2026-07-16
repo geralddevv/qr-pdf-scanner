@@ -21,6 +21,7 @@ process.on("unhandledRejection", (reason) => {
 });
 
 const db = require("./db");
+const SqliteSessionStore = require("./sessionStore");
 const activateRouter = require("./routes/activate");
 const adminRouter = require("./routes/admin");
 
@@ -47,6 +48,20 @@ if (!process.env.ADMIN_PASSWORD_HASH) {
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
+app.locals.formatDateTime = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: process.env.DISPLAY_TIME_ZONE || "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+};
 
 app.use(helmet());
 app.use(express.json({ limit: "10kb" }));
@@ -56,6 +71,7 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use(
   session({
     secret: process.env.SESSION_SECRET,
+    store: new SqliteSessionStore(db),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -82,6 +98,13 @@ app.use((req, res) => {
 // synchronous, so this covers DB errors too). Logs the real error server-side
 // but never leaks internals to the client.
 app.use((err, req, res, next) => {
+  if (err?.type === "entity.too.large" || err?.status === 413) {
+    console.warn(`Request body too large: ${req.method} ${req.originalUrl}`);
+    return res.status(413).json({
+      error: "payload_too_large",
+      message: "Request body exceeds the 10kb limit.",
+    });
+  }
   console.error("Request error:", err);
   if (res.headersSent) return next(err);
   res.status(500).json({ error: "server_error", message: "Something went wrong." });

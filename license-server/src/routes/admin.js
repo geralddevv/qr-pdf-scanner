@@ -1,10 +1,26 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
 const db = require("../db");
 const requireAdmin = require("../middleware/requireAdmin");
 const { generateLicenseCode } = require("../licenseCode");
 
 const router = express.Router();
+
+// This is a single shared-password login, so limit failed guesses per client
+// IP. Successful logins are not counted, avoiding a lockout after recovery.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: (req, res) => {
+    res.status(429).render("login", {
+      error: "Too many failed login attempts. Try again in 15 minutes.",
+    });
+  },
+});
 
 const listLicenses = db.prepare(`
   SELECT
@@ -15,7 +31,7 @@ const listLicenses = db.prepare(`
   LEFT JOIN device_bindings b ON b.license_id = l.id AND b.released_at IS NULL
   ORDER BY l.created_at DESC
 `);
-// Matches by client label, license code, or the currently bound device ID —
+// Matches by client label, system ID, license code, or the currently bound device ID —
 // SQLite's LIKE is case-insensitive for ASCII by default, so this works
 // regardless of how the admin types the search term.
 const searchLicenses = db.prepare(`
@@ -25,16 +41,17 @@ const searchLicenses = db.prepare(`
     b.bound_at AS bound_at
   FROM licenses l
   LEFT JOIN device_bindings b ON b.license_id = l.id AND b.released_at IS NULL
-  WHERE l.label LIKE ? OR l.license_code LIKE ? OR b.device_id LIKE ?
+  WHERE l.label LIKE ? OR l.system_id LIKE ? OR l.license_code LIKE ? OR b.device_id LIKE ?
   ORDER BY l.created_at DESC
 `);
 const findLicense = db.prepare("SELECT * FROM licenses WHERE id = ?");
 const findLicenseByCode = db.prepare("SELECT * FROM licenses WHERE license_code = ?");
 const insertLicense = db.prepare(
-  "INSERT INTO licenses (license_code, label) VALUES (?, ?)"
+  "INSERT INTO licenses (license_code, label, system_id) VALUES (?, ?, ?)"
 );
 const setLicenseStatus = db.prepare("UPDATE licenses SET status = ? WHERE id = ?");
 const setLicenseLabel = db.prepare("UPDATE licenses SET label = ? WHERE id = ?");
+const setLicenseSystemId = db.prepare("UPDATE licenses SET system_id = ? WHERE id = ?");
 const bindingHistory = db.prepare(
   "SELECT * FROM device_bindings WHERE license_id = ? ORDER BY bound_at DESC"
 );
@@ -62,7 +79,7 @@ router.get("/login", (req, res) => {
   res.render("login", { error: null });
 });
 
-router.post("/login", (req, res) => {
+router.post("/login", loginLimiter, (req, res) => {
   const { password } = req.body || {};
   const hash = process.env.ADMIN_PASSWORD_HASH;
   if (!hash || !password || !bcrypt.compareSync(password, hash)) {
@@ -81,13 +98,14 @@ router.use(requireAdmin);
 router.get("/", (req, res) => {
   const q = (req.query.q || "").trim();
   const licenses = q
-    ? searchLicenses.all(`%${q}%`, `%${q}%`, `%${q}%`)
+    ? searchLicenses.all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`)
     : listLicenses.all();
   res.render("dashboard", { licenses, q });
 });
 
 router.post("/licenses", (req, res) => {
   const label = (req.body?.label || "").trim() || null;
+  const systemId = (req.body?.systemId || "").trim() || null;
   let code;
   // Collision retry loop: astronomically unlikely with 125 bits of
   // randomness, but cheap to guard against.
@@ -99,7 +117,7 @@ router.post("/licenses", (req, res) => {
   if (!code) {
     return res.status(500).send("Could not generate a unique license code, try again.");
   }
-  const info = insertLicense.run(code, label);
+  const info = insertLicense.run(code, label, systemId);
   res.redirect(`/admin/licenses/${info.lastInsertRowid}`);
 });
 
@@ -119,6 +137,14 @@ router.post("/licenses/:id/label", (req, res) => {
   if (!license) return res.status(404).send("License not found.");
   const label = (req.body?.label || "").trim() || null;
   setLicenseLabel.run(label, license.id);
+  res.redirect(`/admin/licenses/${license.id}`);
+});
+
+router.post("/licenses/:id/system-id", (req, res) => {
+  const license = findLicense.get(req.params.id);
+  if (!license) return res.status(404).send("License not found.");
+  const systemId = (req.body?.systemId || "").trim() || null;
+  setLicenseSystemId.run(systemId, license.id);
   res.redirect(`/admin/licenses/${license.id}`);
 });
 

@@ -2,10 +2,10 @@
 
 <a class="back-link" href="/admin">&larr; All licenses</a>
 
-<h1><code><%= license.license_code %></code></h1>
+<h1><code class="license-code"><%= license.license_code %></code></h1>
 <p class="muted" style="margin-top:0; margin-bottom: 24px;">
   <span class="badge <%= license.status %>"><%= license.status %></span>
-  &middot; issued <%= license.created_at %>
+  &middot; issued <%= typeof formatDateTime === 'function' ? formatDateTime(license.created_at) : license.created_at %>
 </p>
 
 <div class="card">
@@ -18,11 +18,20 @@
 </div>
 
 <div class="card">
+  <h2>System ID</h2>
+  <p class="muted">Optional identifier for the client system this license belongs to.</p>
+  <form action="/admin/licenses/<%= license.id %>/system-id" method="post" class="row">
+    <input type="text" name="systemId" value="<%= license.system_id || '' %>" placeholder="System ID" style="flex: 1;" />
+    <button type="submit">Save</button>
+  </form>
+</div>
+
+<div class="card">
   <h2>Current binding</h2>
   <% if (activeBinding) { %>
-    <p>Bound to device <code><%= activeBinding.device_id %></code> since <%= activeBinding.bound_at %>.</p>
+    <p>Bound to device <code><%= activeBinding.device_id %></code> since <%= typeof formatDateTime === 'function' ? formatDateTime(activeBinding.bound_at) : activeBinding.bound_at %>.</p>
     <form action="/admin/licenses/<%= license.id %>/release" method="post"
-          onsubmit="return confirm('Release this device binding? The license will become activatable on a new device.');">
+          data-confirm="Release this device binding? The license will become activatable on a new device.">
       <button type="submit" class="danger">Release binding</button>
     </form>
   <% } else { %>
@@ -34,7 +43,7 @@
   <h2>License status</h2>
   <% if (license.status === 'active') { %>
     <form action="/admin/licenses/<%= license.id %>/revoke" method="post"
-          onsubmit="return confirm('Revoke this license? It will stop working immediately, including on the currently bound device.');">
+          data-confirm="Revoke this license? It will stop working immediately, including on the currently bound device.">
       <button type="submit" class="danger">Revoke license</button>
     </form>
   <% } else { %>
@@ -51,8 +60,8 @@
     <% bindings.forEach(function(b) { %>
       <tr>
         <td><code><%= b.device_id %></code></td>
-        <td><%= b.bound_at %></td>
-        <td><%= b.released_at || "—" %></td>
+        <td><%= typeof formatDateTime === 'function' ? formatDateTime(b.bound_at) : b.bound_at %></td>
+        <td><%= typeof formatDateTime === 'function' ? formatDateTime(b.released_at) : (b.released_at || '—') %></td>
       </tr>
     <% }) %>
     <% if (bindings.length === 0) { %>
@@ -70,7 +79,7 @@
         <td><span class="badge attempt-<%= a.result %>"><%= a.result %></span></td>
         <td><code><%= a.device_id %></code></td>
         <td><%= a.ip || "—" %></td>
-        <td><%= a.created_at %></td>
+        <td><%= typeof formatDateTime === 'function' ? formatDateTime(a.created_at) : a.created_at %></td>
       </tr>
     <% }) %>
     <% if (attempts.length === 0) { %>
